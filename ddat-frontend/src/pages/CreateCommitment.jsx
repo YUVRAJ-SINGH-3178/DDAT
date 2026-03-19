@@ -8,165 +8,122 @@ export default function CreateCommitment({ wallet }) {
   const [goal, setGoal] = useState("");
   const [days, setDays] = useState("");
   const [stake, setStake] = useState("");
-  
   const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState(null); // { type: 'loading'|'success'|'error', message: '' }
+  const [step, setStep] = useState("");
+  const [error, setError] = useState("");
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!wallet) return alert("Please connect your wallet first.");
-    if (!goal || !days || !stake) return alert("All fields are required.");
-
+    if (!wallet) return;
+    if (!goal || !days || !stake) return setError("All fields required.");
     setLoading(true);
-    setStatus({ type: "loading", message: "Awaiting signature..." });
+    setError("");
 
     try {
+      setStep("Waiting for wallet confirmation...");
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
       const contract = new ethers.Contract(CONTRACT_ADDRESS, DDA_TRACKER_ABI, signer);
 
-      const durationInSeconds = parseInt(days) * 86400;
-      const stakeWei = ethers.parseEther(stake);
+      const tx = await contract.createCommitment(goal, parseInt(days) * 86400, {
+        value: ethers.parseEther(stake),
+      });
 
-      setStatus({ type: "loading", message: "Confirm in MetaMask..." });
-      const tx = await contract.createCommitment(goal, durationInSeconds, { value: stakeWei });
-      
-      setStatus({ type: "loading", message: "Minting contract on-chain..." });
+      setStep("Mining on-chain...");
       const receipt = await tx.wait();
 
-      let contractCommitmentId = null;
+      let cid = null;
       for (const log of receipt.logs) {
         try {
-          const parsed = contract.interface.parseLog(log);
-          if (parsed && parsed.name === "CommitmentCreated") {
-            contractCommitmentId = Number(parsed.args.commitmentId);
-            break;
-          }
-        } catch { } // ignore
+          const p = contract.interface.parseLog(log);
+          if (p?.name === "CommitmentCreated") { cid = Number(p.args.commitmentId); break; }
+        } catch {}
       }
 
-      setStatus({ type: "loading", message: "Syncing node data..." });
-
+      setStep("Syncing database...");
       const res = await fetch(`${API_BASE}/commitment`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          walletAddress: wallet,
-          goalText: goal,
-          durationDays: parseInt(days),
-          stakeAmount: stake,
-          contractCommitmentId,
-        }),
+        body: JSON.stringify({ walletAddress: wallet, goalText: goal, durationDays: parseInt(days), stakeAmount: stake, contractCommitmentId: cid }),
       });
-
       const data = await res.json();
       if (!data.success) throw new Error(data.error);
 
-      setStatus({ type: "success", message: "Contract Executed." });
-      setTimeout(() => navigate("/"), 2000);
+      setStep("Contract deployed.");
+      setTimeout(() => navigate("/"), 1500);
     } catch (err) {
-      console.error(err);
-      setStatus({ type: "error", message: err.message || "Execution cancelled." });
+      setError(err.shortMessage || err.message || "Transaction failed.");
+      setStep("");
       setLoading(false);
     }
   };
 
   if (!wallet) {
     return (
-      <div className="h-[70vh] flex flex-col items-center justify-center text-center">
-        <h1 className="font-display text-5xl font-bold tracking-tighter mb-4 text-gray-300">
-          Not Connected.
-        </h1>
+      <div className="flex flex-col items-center justify-center min-h-[70vh] text-center">
+        <h1 className="text-3xl font-bold tracking-tight mb-3">Connect Wallet</h1>
+        <p className="text-[#6b6b78] text-sm">Connect your wallet to create a contract.</p>
       </div>
     );
   }
 
   return (
-    <div className="max-w-3xl mx-auto animate-in fade-in slide-in-from-bottom-8 duration-700 ease-out">
-      <div className="mb-16 pt-8">
-        <h1 className="font-display text-5xl md:text-7xl font-bold tracking-tighter leading-none mb-4">
-          Execute<br/><span className="text-indigo-500">Contract.</span>
+    <div className="max-w-lg mx-auto anim-in">
+      {/* Header */}
+      <div className="mb-10">
+        <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-3">
+          New <span className="text-[#b5e853]">Contract</span>
         </h1>
-        <p className="font-sans text-xl text-gray-500 dark:text-gray-400 max-w-lg">
-          Lock capital against your goals. Code is law.
+        <p className="text-[#6b6b78] text-[15px]">
+          Lock ETH against a personal commitment. Complete it to get your stake back.
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-12">
-        {/* Goal Input */}
-        <div className="group">
-          <label className="block font-mono text-sm tracking-widest uppercase text-gray-400 group-focus-within:text-indigo-500 transition-colors mb-2">
-            Target Routine
-          </label>
+      <form onSubmit={handleSubmit} className="space-y-6">
+        <div>
+          <label className="block text-xs text-[#6b6b78] font-medium mb-2 uppercase tracking-wider">Goal</label>
           <input
-            type="text"
-            placeholder="e.g. Build a Web3 App"
-            value={goal}
-            onChange={(e) => setGoal(e.target.value)}
-            disabled={loading}
-            className="brutal-input w-full placeholder:text-gray-300 dark:placeholder:text-gray-700 bg-transparent text-black dark:text-white"
+            type="text" placeholder="What are you committing to?"
+            value={goal} onChange={e => setGoal(e.target.value)} disabled={loading}
+            className="input-field"
           />
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-          {/* Duration Input */}
-          <div className="group">
-            <label className="block font-mono text-sm tracking-widest uppercase text-gray-400 group-focus-within:text-indigo-500 transition-colors mb-2">
-              Duration (Days)
-            </label>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs text-[#6b6b78] font-medium mb-2 uppercase tracking-wider">Duration (days)</label>
             <input
-              type="number"
-              min="1"
-              placeholder="30"
-              value={days}
-              onChange={(e) => setDays(e.target.value)}
-              disabled={loading}
-              className="brutal-input w-full placeholder:text-gray-300 dark:placeholder:text-gray-700 bg-transparent text-black dark:text-white font-mono"
+              type="number" min="1" placeholder="7"
+              value={days} onChange={e => setDays(e.target.value)} disabled={loading}
+              className="input-field"
             />
           </div>
-
-          {/* Stake Input */}
-          <div className="group">
-            <label className="block font-mono text-sm tracking-widest uppercase text-gray-400 group-focus-within:text-indigo-500 transition-colors mb-2">
-              Stake (MATIC)
-            </label>
+          <div>
+            <label className="block text-xs text-[#6b6b78] font-medium mb-2 uppercase tracking-wider">Stake (ETH)</label>
             <input
-              type="number"
-              min="0.001"
-              step="0.001"
-              placeholder="0.1"
-              value={stake}
-              onChange={(e) => setStake(e.target.value)}
-              disabled={loading}
-              className="brutal-input w-full placeholder:text-gray-300 dark:placeholder:text-gray-700 bg-transparent text-black dark:text-white font-mono"
+              type="number" min="0.001" step="0.001" placeholder="0.01"
+              value={stake} onChange={e => setStake(e.target.value)} disabled={loading}
+              className="input-field"
             />
           </div>
         </div>
 
-        {/* Status indicator */}
-        <div className="h-12 flex items-center">
-          {status && (
-            <div className={`font-mono text-sm uppercase tracking-widest flex items-center gap-3 animate-in fade-in
-              ${status.type === 'error' ? 'text-rose-500' : ''}
-              ${status.type === 'success' ? 'text-emerald-500' : ''}
-              ${status.type === 'loading' ? 'text-indigo-500' : ''}
-            `}>
-              {status.type === 'loading' && <div className="size-3 bg-indigo-500 rounded-full animate-ping" />}
-              {status.type === 'success' && <div className="size-3 bg-emerald-500 rounded-full" />}
-              {status.type === 'error' && <div className="size-3 bg-rose-500 rounded-full" />}
-              {status.message}
-            </div>
-          )}
-        </div>
+        {/* Status */}
+        {step && (
+          <div className="flex items-center gap-3 py-3 px-4 rounded-xl bg-[rgba(181,232,83,0.05)] border border-[rgba(181,232,83,0.1)]">
+            {loading && <div className="spinner" />}
+            <span className="text-sm text-[#b5e853]">{step}</span>
+          </div>
+        )}
+        {error && (
+          <div className="py-3 px-4 rounded-xl bg-[rgba(248,113,113,0.05)] border border-[rgba(248,113,113,0.1)]">
+            <span className="text-sm text-[#f87171]">{error}</span>
+          </div>
+        )}
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full btn-pill btn-primary text-xl py-6 mt-8 disabled:opacity-50 flex items-center justify-between px-8 group overflow-hidden relative"
-        >
-          <span className="relative z-10">{loading ? "Processing..." : "Lock Stake"}</span>
-          <span className="relative z-10 text-2xl group-hover:translate-x-2 transition-transform">&rarr;</span>
-          <div className="absolute inset-0 bg-indigo-600 translate-y-full group-hover:translate-y-0 transition-transform duration-500 ease-out" />
+        <button type="submit" disabled={loading} className="btn-lime w-full justify-center py-4 text-[15px]">
+          {loading ? "Processing..." : "Lock Stake"}
+          {!loading && <span>→</span>}
         </button>
       </form>
     </div>
