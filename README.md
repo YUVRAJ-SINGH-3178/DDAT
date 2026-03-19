@@ -1,125 +1,161 @@
-# DDAT - Decentralized Daily Accountability Tracker
+# DDAT — Decentralized Daily Accountability Tracker
 
-DDAT is a full-stack Web3 application designed to hold users accountable to their personal goals. Users stake cryptocurrency (MATIC) against a commitment. To get their stake back, they must provide daily cryptographic proof (images + logs) over a specific duration, which is then verified by a decentralized community consensus.
+A full-stack Web3 accountability platform where users stake real ETH against personal goals. Complete your commitment and get it back. Fail, and it's gone forever — enforced by smart contract and community consensus.
 
-## 🌟 Key Features
+## How It Works
 
-- **Capital Staking**: Users lock real value (MATIC) into a secure smart contract on the Polygon Amoy Testnet.
-- **Smart Contract Consensus**: The contract autonomously releases or forfeits the stake based entirely on the community's votes (`>60%` approval required).
-- **Experimental UI**: The frontend utilizes a unique "Fluid Brutalist + Cinematic Social" aesthetic. No generic dashboards—just massive typography, sleek glassmorphic navigation pills, and edge-to-edge cinematic image feeds.
-- **Gasless Voting Validation**: The backend handles the gas fees for the final `settleCommitment` transaction when consensus is reached, minimizing friction for voters.
+1. **Stake** — Lock ETH into a smart contract with a goal and deadline
+2. **Prove** — Submit daily evidence (text log + image) recorded on-chain
+3. **Vote** — The community reviews proofs and votes Accept or Reject
+4. **Settle** — Once the vote threshold is reached, the contract either refunds the stake or forfeits it based on the consensus result
 
----
+## Tech Stack
 
-## 🏗️ Architecture & Tech Stack
+| Layer | Technology |
+|-------|-----------|
+| Smart Contract | Solidity ^0.8.20, Hardhat, Ethereum Sepolia Testnet |
+| Backend | Node.js, Express, MongoDB, Mongoose, Ethers.js v6 |
+| Frontend | React 19, Vite, Tailwind CSS v4, Ethers.js v6 |
+| Wallet | MetaMask |
 
-This repository is structured into three main directories:
+## Project Structure
 
-1. **`ddat-contract` (Smart Contracts)**
-   - **Solidity (^0.8.20)**: powers the `DDATracker` contract.
-   - **Hardhat**: Development environment, testing, and deployment scripts.
+```
+DDAT/
+├── ddat-contract/       # Solidity smart contract + Hardhat config
+│   ├── contracts/       # DDATracker.sol
+│   ├── scripts/         # deploy.js
+│   └── hardhat.config.js
+├── ddat-backend/        # Express API + blockchain relayer
+│   ├── models/          # Mongoose schemas (Commitment, Proof, User)
+│   ├── routes/          # API endpoints (commitment, proof, vote)
+│   ├── services/        # contractService.js (on-chain interactions)
+│   └── server.js
+├── ddat-frontend/       # React SPA
+│   ├── src/components/  # AppLayout (navbar, routing)
+│   ├── src/pages/       # Dashboard, CreateCommitment, SubmitProof, ProofFeed
+│   └── src/config.js    # Contract ABI + addresses
+└── README.md
+```
 
-2. **`ddat-backend` (Node.js API & Relayer)**
-   - **Express.js & MongoDB/Mongoose**: Handles off-chain relational data (user profiles, proof images, vote tracking).
-   - **Ethers.js (v6)**: Acts as a relayer to interact with the Polygon Amoy blockchain securely.
-
-3. **`ddat-frontend` (React Web Interface)**
-   - **React + Vite**: Lightning-fast build and HMR.
-   - **Tailwind CSS**: Custom designed glassmorphism, brutalist typography (`Syne` and `Space Grotesk`), and fluid background animations.
-   - **Ethers.js (v6)**: Connects users via MetaMask to initiate staking contracts on-chain.
-
----
-
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
-- Node.js (v18+)
-- MongoDB (Local instance or MongoDB Atlas URL)
-- MetaMask extension installed in your browser
-- Testnet MATIC (Polygon Amoy)
 
-### 1. Smart Contract Deployment
-You need to deploy the `DDATracker` contract first to generate the `CONTRACT_ADDRESS`.
+- Node.js v18+
+- MongoDB (local or Atlas)
+- MetaMask browser extension
+- Sepolia testnet ETH ([faucet](https://www.alchemy.com/faucets/ethereum-sepolia))
+
+### 1. Deploy the Smart Contract
 
 ```bash
 cd ddat-contract
-
-# Install dependencies
 npm install
-
-# Create environment file
 cp .env.example .env
 ```
-Fill in the `.env` file:
+
+Fill in `.env`:
 ```env
-AMOY_RPC_URL=https://rpc-amoy.polygon.technology
-PRIVATE_KEY=your_wallet_private_key
-POLYGONSCAN_API_KEY=optional_for_contract_verification
+SEPOLIA_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com
+PRIVATE_KEY=your_deployer_private_key
 ```
 
-Deploy the contract:
+Deploy:
 ```bash
-npx hardhat run scripts/deploy.js --network amoy
+npx hardhat run scripts/deploy.js --network sepolia
 ```
-*Take note of the deployed Contract Address.*
 
-### 2. Backend Setup
+Save the deployed contract address for the next steps.
+
+### 2. Start the Backend
 
 ```bash
-cd ../ddat-backend
-
-# Install dependencies
+cd ddat-backend
 npm install
-
-# Create environment file
 cp .env.example .env
 ```
-Fill in the `.env` file:
+
+Fill in `.env`:
 ```env
 PORT=5000
 MONGODB_URI=mongodb://localhost:27017/ddat
-VOTE_THRESHOLD=5
-AMOY_RPC_URL=https://rpc-amoy.polygon.technology
+VOTE_THRESHOLD=3
+SEPOLIA_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com
 PRIVATE_KEY=your_backend_relayer_private_key
-CONTRACT_ADDRESS=address_from_step_1
+CONTRACT_ADDRESS=deployed_contract_address
 ```
 
-Start the server:
+Start:
 ```bash
 npm run dev
 ```
 
-### 3. Frontend Setup
+### 3. Start the Frontend
 
 ```bash
-cd ../ddat-frontend
-
-# Install dependencies
+cd ddat-frontend
 npm install
 ```
 
-Update the configuration in `src/config.js`:
+Update `src/config.js` with your contract address:
 ```javascript
-export const CONTRACT_ADDRESS = "address_from_step_1";
-export const API_BASE = "http://localhost:5000/api";
+export const CONTRACT_ADDRESS = "your_deployed_contract_address";
+export const API_BASE = "/api";
 ```
 
-Start the development server:
+Start:
 ```bash
 npm run dev
 ```
 
----
+Open `http://localhost:5173` and connect MetaMask.
 
-## 🖥️ Application Flow
+## API Endpoints
 
-1. **Portfolio (Dashboard)**: Users connect MetaMask. The app pulls their off-chain data and presents their total open MATIC positions.
-2. **Execute (Create Commitment)**: User enters an intention (e.g., "Hit the gym for 30 days") and locks up MATIC. MetaMask prompts a transaction to the `DDATracker` contract.
-3. **Evidence (Submit Proof)**: Daily, the user uploads an image and log covering their progress.
-4. **Consensus (Proof Feed)**: The community reviews pending proof blocks in a cinematic scrolling feed featuring massive Glassmorphism layout. They vote `Accept` or `Reject`.
-5. **Settlement**: Once `VOTE_THRESHOLD` is reached, the backend calculates the ratio. If `>60%` accepted, the backend calls `verifyAndRelease(id, true)` on-chain, and the user gets their MATIC back. Otherwise, the stake is retained.
+| Method | Endpoint | Description | Rate Limit |
+|--------|----------|-------------|------------|
+| `GET` | `/api/commitments/:wallet` | Get user's commitments | 100/15min |
+| `POST` | `/api/commitment` | Create new commitment | 20/15min |
+| `POST` | `/api/proof/:commitmentId` | Submit proof for a commitment | 20/15min |
+| `GET` | `/api/proofs/feed` | Get pending proofs for voting | 100/15min |
+| `POST` | `/api/vote/:proofId` | Vote on a proof | 30/15min |
+| `GET` | `/api/health` | Server health check | 100/15min |
 
----
+## Smart Contract
 
-## ⚠️ Disclaimer
-*This is a testnet project built for experimental design and Web3 accountability mechanisms. Do not deploy to mainnet without comprehensive smart contract auditing.*
+The `DDATracker` contract handles:
+- **createCommitment(goal, duration)** — Lock ETH with a goal and deadline
+- **submitProof(commitmentId)** — Register proof completion on-chain
+- **verifyAndRelease(commitmentId, success)** — Called by the backend relayer after consensus; refunds or retains the stake
+
+## Application Flow
+
+```
+User creates commitment        User submits proof
+    ↓ (MetaMask tx)                ↓ (MetaMask tx + API upload)
+    ↓                              ↓
+Smart Contract locks ETH       Proof appears in Consensus Feed
+                                   ↓
+                            Community votes Accept/Reject
+                                   ↓
+                            Threshold reached → Backend relayer calls
+                            verifyAndRelease() on smart contract
+                                   ↓
+                            ETH refunded (>60% accept) or forfeited
+```
+
+## Security
+
+- **Rate limiting** on all endpoints (express-rate-limit)
+- **Backend relayer** handles gas for settlement transactions
+- Wallet addresses are normalized to lowercase for consistent lookups
+- Voting prevents self-voting (can't vote on your own proof)
+
+## Disclaimer
+
+This is a testnet project built for learning and experimentation with Web3 accountability mechanisms. Do not deploy to mainnet without a comprehensive smart contract audit.
+
+## License
+
+MIT
