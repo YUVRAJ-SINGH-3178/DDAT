@@ -1,5 +1,5 @@
 // DDATracker contract config — update CONTRACT_ADDRESS after deploying
-export const CONTRACT_ADDRESS = "0x0000000000000000000000000000000000000000"; // TODO: Replace after deploy
+export const CONTRACT_ADDRESS = "0xFeDfe7b020058B28bB9b057B0525A08B8B483Fcd";
 
 export const DDA_TRACKER_ABI = [
   {
