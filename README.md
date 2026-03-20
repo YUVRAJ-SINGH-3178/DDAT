@@ -163,6 +163,4 @@ Smart Contract locks ETH       Proof appears in Consensus Feed
 
 This is a testnet project built for learning and experimentation with Web3 accountability mechanisms. Do not deploy to mainnet without a comprehensive smart contract audit.
 
-## License
 
-MIT
