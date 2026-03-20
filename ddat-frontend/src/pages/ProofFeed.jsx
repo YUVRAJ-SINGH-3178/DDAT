@@ -4,159 +4,151 @@ import { API_BASE } from "../config";
 export default function ProofFeed({ wallet }) {
   const [proofs, setProofs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [voting, setVoting] = useState(null);
-  const [logs, setLogs] = useState({});
 
-  const fetchFeed = () => {
-    setLoading(true);
+  useEffect(() => {
     fetch(`${API_BASE}/proofs/feed`)
       .then(r => r.json())
-      .then(d => { if (d.success) setProofs(d.data); })
+      .then(d => {
+        if (d.success) setProofs(d.data);
+      })
       .catch(console.error)
       .finally(() => setLoading(false));
-  };
+  }, []);
 
-  useEffect(fetchFeed, []);
-
-  const vote = async (proofId, type) => {
-    if (!wallet) return;
-    setVoting(proofId);
+  const handleVote = async (proofId, approve) => {
+    if (!wallet) return alert("Connect wallet to vote.");
     try {
       const res = await fetch(`${API_BASE}/vote/${proofId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ walletAddress: wallet, vote: type }),
+        body: JSON.stringify({ voterAddress: wallet, approve }),
       });
       const data = await res.json();
-      if (!data.success) {
-        setLogs(p => ({ ...p, [proofId]: { msg: data.error, ok: false } }));
-      } else {
-        const i = data.data;
-        let msg = `Vote recorded (${i.voteYes}Y / ${i.voteNo}N)`;
-        if (i.thresholdReached) msg += ` — ${i.commitmentStatus}`;
-        setLogs(p => ({ ...p, [proofId]: { msg, ok: true } }));
-        setTimeout(fetchFeed, 2500);
-      }
+      if (!data.success) throw new Error(data.error);
+
+      // Optimistic update
+      setProofs(prev => prev.map(p => {
+        if (p._id === proofId) {
+          const v = data.vote; // return updated vote counts
+          return { ...p, votesFor: v?.votesFor ?? p.votesFor + (approve ? 1 : 0), votesAgainst: v?.votesAgainst ?? p.votesAgainst + (!approve ? 1 : 0) };
+        }
+        return p;
+      }));
     } catch (err) {
-      setLogs(p => ({ ...p, [proofId]: { msg: err.message, ok: false } }));
-    } finally {
-      setVoting(null);
+      alert(err.message || "Vote failed");
     }
   };
 
-  if (!wallet) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[70vh] text-center">
-        <h1 className="text-3xl font-bold tracking-tight mb-3">Connect Wallet</h1>
-        <p className="text-[#6b6b78] text-sm">Connect your wallet to participate in consensus.</p>
-      </div>
-    );
-  }
-
   return (
-    <div className="max-w-2xl mx-auto anim-in">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-1">
-            <span className="text-[#b5e853]">Consensus</span> Feed
-          </h1>
-          <p className="text-[#6b6b78] text-sm">{proofs.length} pending verification{proofs.length !== 1 ? "s" : ""}</p>
-        </div>
-        <button onClick={fetchFeed} disabled={loading} className="btn-outline btn-sm">
-          {loading ? <div className="spinner" /> : "Refresh"}
-        </button>
+    <div className="max-w-4xl mx-auto anim-in pt-8 px-4 pb-20">
+      
+      {/* ─── Header ───────────────────────────────────────── */}
+      <div className="mb-12 border-l-8 border-[var(--color-yellow)] pl-6">
+        <h1 className="text-5xl md:text-7xl font-heading font-black tracking-tighter text-white uppercase leading-[0.9]">
+          Consensus<br />Feed
+        </h1>
+        <p className="mt-4 text-xl font-bold text-white/60">
+          Review evidence. Cast your vote. Enforce accountability.
+        </p>
       </div>
 
-      {/* Loading */}
-      {loading && proofs.length === 0 && (
-        <div className="flex items-center gap-3 justify-center py-16">
-          <div className="spinner" />
-          <span className="text-[#6b6b78] text-sm">Loading feed...</span>
+      {loading && (
+        <div className="flex items-center gap-3 justify-center py-20 bg-[var(--color-charcoal)] border-2 border-[var(--color-yellow)] rounded-2xl shadow-[8px_8px_0_0_var(--color-yellow)]">
+          <div className="spinner border-[var(--color-yellow)] border-t-[var(--color-yellow)]" />
+          <span className="text-[var(--color-yellow)] font-bold uppercase text-lg">Loading Feed...</span>
         </div>
       )}
 
-      {/* Empty */}
       {!loading && proofs.length === 0 && (
-        <div className="glass-card p-16 text-center">
-          <p className="text-[#6b6b78]">No pending verifications right now</p>
+        <div className="bg-[#f4f4f5] border-2 border-dashed border-black rounded-2xl p-16 text-center">
+          <p className="text-black font-black uppercase text-2xl">No pending proofs</p>
+          <p className="text-black/60 font-bold mt-2">The consensus queue is empty.</p>
         </div>
       )}
 
-      {/* Feed */}
-      <div className="space-y-5 stagger">
-        {proofs.map(proof => {
-          const c = proof.commitmentId;
-          const total = proof.voteYes + proof.voteNo;
-          const ratio = total === 0 ? 0 : Math.round((proof.voteYes / total) * 100);
-          const isVoting = voting === proof._id;
-          const fb = logs[proof._id];
+      {/* ─── Feed ─────────────────────────────────────────── */}
+      <div className="space-y-12 stagger">
+        {proofs.map(p => {
+          const total = p.votesFor + p.votesAgainst;
+          const ratio = total === 0 ? 0 : (p.votesFor / total) * 100;
+          const userVoted = p.voters?.includes(wallet?.toLowerCase());
+          const isOwner = p.commitmentId?.walletAddress?.toLowerCase() === wallet?.toLowerCase();
 
           return (
-            <div key={proof._id} className="glass-card overflow-hidden anim-in">
-              {/* Image */}
-              {proof.imageUrl && (
-                <div className="relative w-full aspect-[2/1] overflow-hidden">
-                  <img src={proof.imageUrl} alt="" className="w-full h-full object-cover" />
-                  <div className="absolute inset-0 bg-gradient-to-t from-[#050507] via-transparent to-transparent" />
-                </div>
-              )}
-
-              <div className="p-5 space-y-4">
-                {/* Meta */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-full bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.08)] flex items-center justify-center text-[9px] font-semibold text-[#6b6b78]">
-                      {proof.walletAddress.slice(2,4).toUpperCase()}
-                    </div>
-                    <span className="text-xs text-[#6b6b78]">{proof.walletAddress.slice(0,6)}...{proof.walletAddress.slice(-4)}</span>
+            <div key={p._id} className="bg-white border-2 border-black rounded-2xl shadow-hard-lg overflow-hidden anim-in">
+              <div className="grid md:grid-cols-2">
+                
+                {/* Left: Evidence Image */}
+                <div className="bg-[#f4f4f5] border-b-2 md:border-b-0 md:border-r-2 border-black p-6 flex flex-col justify-center relative">
+                  <div className="absolute top-4 left-4 bg-[var(--color-sage)] border-2 border-black px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider z-10">
+                    CID #{p.commitmentId?.contractCommitmentId || "?"}
                   </div>
-                  {c && <span className="text-sm font-bold">{c.stakeAmount} <span className="text-[#4a4a55]">ETH</span></span>}
-                </div>
-
-                {/* Goal */}
-                <h3 className="text-[15px] font-semibold leading-snug">{c ? c.goalText : "Unknown"}</h3>
-
-                {/* Description */}
-                <p className="text-[13px] text-[#a0a0ab] leading-relaxed line-clamp-3">{proof.description}</p>
-
-                {/* Vote bar */}
-                <div className="flex items-center gap-3">
-                  <span className="text-[11px] font-medium text-[#b5e853]">{proof.voteYes}Y</span>
-                  <div className="flex-1 h-1.5 bg-[rgba(255,255,255,0.05)] rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-gradient-to-r from-[#b5e853] to-[#86d638] rounded-full transition-all duration-700"
-                      style={{ width: `${total === 0 ? 0 : ratio}%` }}
+                  {p.imageUrl ? (
+                    <img 
+                      src={p.imageUrl} 
+                      alt="Proof" 
+                      className="w-full h-auto max-h-[400px] object-cover border-2 border-black rounded-xl shadow-hard hover:rotate-1 transition-transform" 
                     />
-                  </div>
-                  <span className="text-[11px] font-medium text-[#f87171]">{proof.voteNo}N</span>
+                  ) : (
+                    <div className="w-full h-64 border-2 border-dashed border-black rounded-xl flex items-center justify-center text-black/40 font-bold uppercase">
+                      No Image Provided
+                    </div>
+                  )}
                 </div>
 
-                {/* Feedback */}
-                {fb && (
-                  <div className={`text-xs py-2 px-3 rounded-lg ${
-                    fb.ok
-                      ? "bg-[rgba(181,232,83,0.05)] border border-[rgba(181,232,83,0.1)] text-[#b5e853]"
-                      : "bg-[rgba(248,113,113,0.05)] border border-[rgba(248,113,113,0.1)] text-[#f87171]"
-                  }`}>
-                    {fb.msg}
+                {/* Right: Details & Voting */}
+                <div className="p-8 flex flex-col justify-between">
+                  <div>
+                    <h3 className="text-xl font-black uppercase tracking-tight text-black mb-4">
+                      "{p.commitmentId?.goalText || "Unknown Goal"}"
+                    </h3>
+                    <div className="bg-[#f4f4f5] border-2 border-black rounded-xl p-4 mb-6 shadow-[2px_2px_0_0_#000]">
+                      <p className="text-sm font-bold text-black/50 uppercase tracking-wider mb-2">Log Entry</p>
+                      <p className="text-black font-medium leading-relaxed">{p.description}</p>
+                    </div>
                   </div>
-                )}
 
-                {/* Actions */}
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => vote(proof._id, "yes")} disabled={isVoting}
-                    className="flex-1 btn-outline btn-sm justify-center hover:border-[#b5e853] hover:text-[#b5e853] disabled:opacity-20 transition-colors"
-                  >
-                    {isVoting ? <div className="spinner" /> : "Accept"}
-                  </button>
-                  <button
-                    onClick={() => vote(proof._id, "no")} disabled={isVoting}
-                    className="flex-1 btn-outline btn-sm justify-center hover:border-[#f87171] hover:text-[#f87171] disabled:opacity-20 transition-colors"
-                  >
-                    {isVoting ? <div className="spinner" /> : "Reject"}
-                  </button>
+                  <div>
+                    {/* Voting Gauge */}
+                    <div className="mb-6">
+                      <div className="flex justify-between text-xs font-bold uppercase tracking-wider text-black mb-2">
+                        <span>Current Consensus</span>
+                        <span>{total > 0 ? `${ratio.toFixed(0)}% Accept` : "No Votes"}</span>
+                      </div>
+                      <div className="h-4 w-full bg-[#f4f4f5] border-2 border-black rounded-full overflow-hidden flex">
+                        <div 
+                          className="h-full bg-[var(--color-yellow)] transition-all duration-500 border-r-2 border-black"
+                          style={{ width: `${ratio}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Voting Actions */}
+                    {isOwner ? (
+                       <div className="text-center p-4 bg-[var(--color-yellow)] border-2 border-black rounded-xl shadow-[2px_2px_0_0_#000] font-bold text-black uppercase">
+                         This is your proof
+                       </div>
+                    ) : userVoted ? (
+                       <div className="text-center p-4 bg-[var(--color-sage)] border-2 border-black rounded-xl shadow-[2px_2px_0_0_#000] font-bold text-black uppercase">
+                         Vote Recorded
+                       </div>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-4">
+                        <button 
+                          onClick={() => handleVote(p._id, true)}
+                          className="neo-btn justify-center bg-[var(--color-sage)] text-black py-4 translate-push"
+                        >
+                          ACCEPT
+                        </button>
+                        <button 
+                          onClick={() => handleVote(p._id, false)}
+                          className="neo-btn justify-center bg-[#ff5f57] text-white py-4 translate-push"
+                        >
+                          REJECT
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
