@@ -2,6 +2,13 @@
 
 A full-stack Web3 accountability platform where users stake real ETH against personal goals. Complete your commitment and get it back. Fail, and it's gone forever — enforced by smart contract and community consensus.
 
+## 🌟 The Neo-Brutalist Interface
+
+DDAT features a strict **Neo-Brutalist** visual identity:
+- **Typography:** High-impact `Cabinet Grotesk` headings paired with clean `Satoshi` body text.
+- **Palette:** High-contrast Charcoal (`#171e19`), vibrant Yellow (`#ffe17c`), and muted Sage (`#b7c6c2`).
+- **Mechanics:** 2px thick black borders on all interactive elements, paired with 0px blur hard shadows. Buttons feature a mechanical "push" translation on hover.
+
 ## How It Works
 
 1. **Stake** — Lock ETH into a smart contract with a goal and deadline
