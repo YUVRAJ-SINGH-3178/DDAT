@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ethers } from "ethers";
 import { CONTRACT_ADDRESS, DDA_TRACKER_ABI, API_BASE } from "../config";
+import TransactionStatus from "../components/TransactionStatus";
 
 export default function CreateCommitment({ wallet }) {
   const navigate = useNavigate();
@@ -9,18 +10,26 @@ export default function CreateCommitment({ wallet }) {
   const [days, setDays] = useState("");
   const [stake, setStake] = useState("");
   const [loading, setLoading] = useState(false);
-  const [step, setStep] = useState("");
-  const [error, setError] = useState("");
+  const [txStatus, setTxStatus] = useState("");
+  const [txMessage, setTxMessage] = useState("");
+  const [txHash, setTxHash] = useState("");
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!wallet) return;
-    if (!goal || !days || !stake) return setError("All fields required.");
+    if (!goal || !days || !stake) {
+      setTxStatus("error");
+      setTxMessage("All fields required.");
+      return;
+    }
     setLoading(true);
-    setError("");
+    setTxStatus("");
+    setTxMessage("");
+    setTxHash("");
 
     try {
-      setStep("Waiting for wallet confirmation...");
+      setTxStatus("waiting");
+      setTxMessage("Waiting for wallet approval...");
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
       const contract = new ethers.Contract(CONTRACT_ADDRESS, DDA_TRACKER_ABI, signer);
@@ -29,7 +38,9 @@ export default function CreateCommitment({ wallet }) {
         value: ethers.parseEther(stake),
       });
 
-      setStep("Mining on-chain...");
+      setTxStatus("mining");
+      setTxMessage("Transaction Mining On-Chain...");
+      setTxHash(tx.hash);
       const receipt = await tx.wait();
 
       let cid = null;
@@ -40,7 +51,7 @@ export default function CreateCommitment({ wallet }) {
         } catch {}
       }
 
-      setStep("Syncing database...");
+      setTxMessage("Syncing database...");
       const res = await fetch(`${API_BASE}/commitment`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -49,11 +60,12 @@ export default function CreateCommitment({ wallet }) {
       const data = await res.json();
       if (!data.success) throw new Error(data.error);
 
-      setStep("Contract deployed.");
+      setTxStatus("success");
+      setTxMessage("Contract deployed.");
       setTimeout(() => navigate("/"), 1500);
     } catch (err) {
-      setError(err.shortMessage || err.message || "Transaction failed.");
-      setStep("");
+      setTxStatus("error");
+      setTxMessage(err.shortMessage || err.message || "Transaction failed.");
       setLoading(false);
     }
   };
@@ -117,18 +129,7 @@ export default function CreateCommitment({ wallet }) {
           </div>
 
           {/* Status */}
-          {step && (
-            <div className="flex items-center gap-3 py-3 px-4 bg-[var(--color-yellow)] border-2 border-black rounded-lg shadow-[2px_2px_0_0_#000]">
-              {loading && <div className="spinner border-black border-t-black" />}
-              <span className="text-sm font-bold text-black uppercase">{step}</span>
-            </div>
-          )}
-          
-          {error && (
-            <div className="py-3 px-4 bg-[#ff5f57] border-2 border-black rounded-lg shadow-[2px_2px_0_0_#000]">
-              <span className="text-sm font-bold text-white uppercase">{error}</span>
-            </div>
-          )}
+          <TransactionStatus status={txStatus} message={txMessage} txHash={txHash} />
 
           <button type="submit" disabled={loading} className="neo-btn w-full justify-center py-4 text-lg translate-push mt-4">
             {loading ? "Processing..." : "Lock Stake"}
