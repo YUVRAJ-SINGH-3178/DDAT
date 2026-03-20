@@ -1,5 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
 import { useState, useEffect } from "react";
+import { ethers } from "ethers";
 
 const LINKS = [
   { to: "/", label: "Portfolio" },
@@ -10,7 +11,6 @@ const LINKS = [
 
 export default function AppLayout({ children, wallet, setWallet }) {
   const { pathname } = useLocation();
-  const [scrolled, setScrolled] = useState(false);
 
   // Auto-reconnect wallet on page load
   useEffect(() => {
@@ -19,12 +19,6 @@ export default function AppLayout({ children, wallet, setWallet }) {
         if (accs.length > 0) setWallet(accs[0]);
       });
     }
-  }, []);
-
-  useEffect(() => {
-    const fn = () => setScrolled(window.scrollY > 10);
-    window.addEventListener("scroll", fn, { passive: true });
-    return () => window.removeEventListener("scroll", fn);
   }, []);
 
   const connectWallet = async () => {
@@ -38,84 +32,84 @@ export default function AppLayout({ children, wallet, setWallet }) {
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
-      {/* ─── NAV ──────────────────────────────────────────── */}
-      <header className="fixed top-5 left-1/2 -translate-x-1/2 z-50 w-[95%] max-w-4xl">
-        <nav className={`nav-glass rounded-full px-3 py-2 flex items-center justify-between transition-all duration-500 ${scrolled ? "bg-[#050507]/80 shadow-2xl shadow-black/40" : ""}`}>
-          {/* Logo */}
-          <Link to="/" className="flex items-center gap-2.5 pl-3 hover:opacity-80 transition-opacity">
-            <div className="w-8 h-8 rounded-full bg-[#b5e853] flex items-center justify-center">
-              <span className="text-[#050507] text-xs font-black">D</span>
-            </div>
-            <span className="text-[15px] font-bold tracking-tight hidden sm:block">DDAT</span>
-          </Link>
-
-          {/* Center nav */}
-          <div className="hidden md:flex items-center bg-[rgba(255,255,255,0.04)] rounded-full p-1">
-            {LINKS.map(link => (
-              <Link
-                key={link.to}
-                to={link.to}
-                className={`px-4 py-1.5 rounded-full text-[13px] font-medium transition-all duration-300 ${pathname === link.to
-                  ? "bg-[rgba(255,255,255,0.08)] text-white"
-                  : "text-[#6b6b78] hover:text-[#a0a0ab]"
-                  }`}
-              >
-                {link.label}
-              </Link>
-            ))}
+    <div className="min-h-screen flex flex-col pt-20">
+      {/* ─── NEO-BRUTALIST NAV ──────────────────────────────────────────── */}
+      <header className="fixed top-0 left-0 w-full h-20 z-50 bg-[var(--color-yellow)] border-b-2 border-black flex items-center justify-between px-6">
+        {/* Left: Logo */}
+        <Link to="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+          <div className="w-10 h-10 bg-black flex items-center justify-center">
+            {/* Using a lightning bolt icon as requested */}
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="var(--color-yellow)" xmlns="http://www.w3.org/2000/svg">
+              <path d="M13 2L3 14H12L11 22L21 10H12L13 2Z" stroke="var(--color-yellow)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
           </div>
+          <span className="font-heading text-xl font-extrabold tracking-tight text-black hidden sm:block">DDAT</span>
+        </Link>
 
-          {/* Right side */}
-          <div className="flex items-center gap-2 pr-1">
-            {wallet ? (
-              <div className="flex items-center gap-1">
-                <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-[rgba(181,232,83,0.06)] border border-[rgba(181,232,83,0.12)]">
-                  <div className="w-2 h-2 rounded-full bg-[#b5e853]" />
-                  <span className="text-xs font-medium text-[#b5e853]">{wallet.slice(0, 5)}...{wallet.slice(-4)}</span>
-                </div>
-                <button
-                  onClick={disconnectWallet}
-                  className="w-8 h-8 rounded-full flex items-center justify-center text-[#6b6b78] hover:text-[#f87171] hover:bg-[rgba(248,113,113,0.08)] transition-all"
-                  title="Disconnect wallet"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                    <polyline points="16 17 21 12 16 7" />
-                    <line x1="21" y1="12" x2="9" y2="12" />
-                  </svg>
-                </button>
-              </div>
-            ) : (
-              <button onClick={connectWallet} className="btn-lime btn-sm">
-                Get Started
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 10L10 2M10 2H4M10 2V8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-              </button>
-            )}
-          </div>
-        </nav>
-      </header>
-
-      {/* ─── MOBILE NAV ──────────────────────────────────── */}
-      <nav className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 md:hidden">
-        <div className="nav-glass rounded-full px-2 py-1.5 flex items-center gap-1">
+        {/* Center: Links */}
+        <div className="hidden md:flex items-center gap-8">
           {LINKS.map(link => (
             <Link
               key={link.to}
               to={link.to}
-              className={`px-3.5 py-2 rounded-full text-[11px] font-semibold transition-all ${pathname === link.to
-                ? "bg-[rgba(255,255,255,0.08)] text-white"
-                : "text-[#6b6b78]"
-                }`}
+              className={`text-[15px] font-bold transition-all border-b-2 ${
+                pathname === link.to
+                  ? "text-black border-black"
+                  : "text-black/60 border-transparent hover:text-black"
+              }`}
             >
               {link.label}
             </Link>
           ))}
         </div>
+
+        {/* Right: Wallet CTA */}
+        <div className="flex items-center gap-3">
+          {wallet ? (
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 px-4 py-2 border-2 border-black bg-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] rounded-md font-bold text-sm text-black">
+                <div className="w-2.5 h-2.5 bg-[#28c840] border-2 border-black rounded-full" />
+                <span>{wallet.slice(0, 5)}...{wallet.slice(-4)}</span>
+              </div>
+              <button
+                onClick={disconnectWallet}
+                className="w-10 h-10 border-2 border-black bg-[--color-white] flex items-center justify-center rounded-md hover:bg-[#ff5f57] hover:text-white transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] translate-push"
+                title="Disconnect wallet"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="square" strokeLinejoin="miter">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                  <polyline points="16 17 21 12 16 7" />
+                  <line x1="21" y1="12" x2="9" y2="12" />
+                </svg>
+              </button>
+            </div>
+          ) : (
+            <button onClick={connectWallet} className="neo-btn translate-push">
+              Connect Wallet
+            </button>
+          )}
+        </div>
+      </header>
+
+      {/* ─── MOBILE NAV (Neo-Brutalist Bottom Bar) ───────────────────── */}
+      <nav className="fixed bottom-0 left-0 w-full h-16 bg-[var(--color-yellow)] border-t-2 border-black z-50 md:hidden flex items-center justify-around px-2">
+        {LINKS.map(link => (
+          <Link
+            key={link.to}
+            to={link.to}
+            className={`text-xs font-bold uppercase tracking-wider px-3 py-2 border-2 ${
+              pathname === link.to
+                ? "bg-black text-[var(--color-yellow)] border-black rounded-md shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] translate-x-[-2px] translate-y-[-2px]"
+                : "text-black border-transparent"
+            }`}
+          >
+            {link.label}
+          </Link>
+        ))}
       </nav>
 
       {/* ─── CONTENT ─────────────────────────────────────── */}
-      <main className="flex-1 max-w-5xl w-full mx-auto px-5 pt-28 pb-24 md:pb-12">
+      <main className="flex-1 w-full mx-auto pb-24 md:pb-12 bg-[var(--color-charcoal)]">
         <div key={pathname} className="anim-in">
           {children}
         </div>
