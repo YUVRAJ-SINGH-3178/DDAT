@@ -14,7 +14,7 @@ export default function AppLayout({ children, wallet, setWallet }) {
 
   // Auto-reconnect wallet on page load
   useEffect(() => {
-    if (window.ethereum && !wallet) {
+    if (window.ethereum && !wallet && !localStorage.getItem("walletDisconnected")) {
       window.ethereum.request({ method: "eth_accounts" }).then(accs => {
         if (accs.length > 0) setWallet(accs[0]);
       });
@@ -24,10 +24,12 @@ export default function AppLayout({ children, wallet, setWallet }) {
   const connectWallet = async () => {
     if (!window.ethereum) return alert("Install MetaMask to continue.");
     const accs = await window.ethereum.request({ method: "eth_requestAccounts" });
+    localStorage.removeItem("walletDisconnected");
     setWallet(accs[0]);
   };
 
   const disconnectWallet = () => {
+    localStorage.setItem("walletDisconnected", "true");
     setWallet(null);
   };
 

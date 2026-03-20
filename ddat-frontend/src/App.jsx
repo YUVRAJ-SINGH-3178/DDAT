@@ -13,7 +13,7 @@ function App() {
     <BrowserRouter>
       <AppLayout wallet={wallet} setWallet={setWallet}>
         <Routes>
-          <Route path="/" element={<Dashboard wallet={wallet} />} />
+          <Route path="/" element={<Dashboard wallet={wallet} setWallet={setWallet} />} />
           <Route path="/create" element={<CreateCommitment wallet={wallet} />} />
           <Route path="/submit" element={<SubmitProof wallet={wallet} />} />
           <Route path="/feed" element={<ProofFeed wallet={wallet} />} />

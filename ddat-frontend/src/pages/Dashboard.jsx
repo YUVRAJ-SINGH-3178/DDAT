@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ethers } from "ethers";
 import { API_BASE } from "../config";
+import { createPortal } from "react-dom";
 
 const STATUS = {
   pending:   { label: "Pending",   cls: "tag-pending" },
@@ -10,10 +11,22 @@ const STATUS = {
   failed:    { label: "Forfeited", cls: "tag-failed" },
 };
 
-export default function Dashboard({ wallet }) {
+export default function Dashboard({ wallet, setWallet }) {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [balance, setBalance] = useState(null);
+  const [showLearnMore, setShowLearnMore] = useState(false);
+
+  const handleConnect = async () => {
+    if (!window.ethereum) return alert("Install MetaMask to continue.");
+    try {
+      const accs = await window.ethereum.request({ method: "eth_requestAccounts" });
+      localStorage.removeItem("walletDisconnected");
+      setWallet?.(accs[0]);
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   useEffect(() => {
     if (!wallet) return;
@@ -58,10 +71,16 @@ export default function Dashboard({ wallet }) {
               </p>
               
               <div className="flex flex-wrap items-center gap-4 pt-4">
-                <button className="neo-btn text-lg py-4 px-8 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] translate-push-lg">
+                <button 
+                  onClick={handleConnect}
+                  className="neo-btn text-lg py-4 px-8 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] translate-push-lg"
+                >
                   Connect Wallet ↗
                 </button>
-                <div className="neo-btn neo-btn-white text-lg py-4 px-8 translate-push">
+                <div 
+                  onClick={() => setShowLearnMore(true)}
+                  className="neo-btn neo-btn-white text-lg py-4 px-8 translate-push cursor-pointer"
+                >
                   Learn More
                 </div>
               </div>
@@ -94,6 +113,47 @@ export default function Dashboard({ wallet }) {
             <h2 className="text-[var(--color-sage)] font-heading text-4xl uppercase font-black mx-8 tracking-wider">NO MERCY</h2>
           </div>
         </div>
+
+        {/* Learn More Modal */}
+        {showLearnMore && createPortal(
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm anim-in m-0 top-0 left-0 w-full h-screen">
+            <div className="neo-card-lg p-8 max-w-2xl w-full relative max-h-[90vh] overflow-y-auto">
+              <button 
+                onClick={() => setShowLearnMore(false)}
+                className="absolute top-4 right-4 w-10 h-10 bg-white border-2 border-black rounded-full flex items-center justify-center font-black text-xl hover:bg-[#ff5f57] hover:text-white transition-colors shadow-hard"
+              >
+                ✕
+              </button>
+              
+              <h2 className="text-3xl sm:text-4xl font-black uppercase mb-6 tracking-tight pr-12">How DDAT Works</h2>
+              
+              <div className="space-y-6 text-lg font-medium">
+                <div className="bg-[#f4f4f5] border-2 border-black p-4 rounded-xl shadow-[2px_2px_0_0_#000]">
+                  <h3 className="font-black uppercase text-xl mb-2 text-black">1. Stake & Commit</h3>
+                  <p className="text-black/70">Lock your ETH into our smart contract along with a personal goal and a deadline. If you succeed, you get it all back.</p>
+                </div>
+                
+                <div className="bg-[#f4f4f5] border-2 border-black p-4 rounded-xl shadow-[2px_2px_0_0_#000]">
+                  <h3 className="font-black uppercase text-xl mb-2 text-black">2. Submit Evidence</h3>
+                  <p className="text-black/70">Upload a photo and a brief log describing your progress. This evidence is logged and tied to your on-chain commitment permanently.</p>
+                </div>
+                
+                <div className="bg-[#f4f4f5] border-2 border-black p-4 rounded-xl shadow-[2px_2px_0_0_#000]">
+                  <h3 className="font-black uppercase text-xl mb-2 text-black">3. Community Consensus</h3>
+                  <p className="text-black/70">The community reviews your evidence in the Consensus Feed. If the vote passes (≥60% Accept), your stake is refunded. If it fails, your ETH is forfeited forever.</p>
+                </div>
+              </div>
+              
+              <button 
+                onClick={() => setShowLearnMore(false)}
+                className="neo-btn neo-btn-yellow w-full justify-center mt-8 py-4 text-lg translate-push"
+              >
+                GOT IT
+              </button>
+            </div>
+          </div>,
+          document.body
+        )}
       </div>
     );
   }
