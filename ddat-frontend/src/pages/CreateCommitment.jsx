@@ -60,72 +60,82 @@ export default function CreateCommitment({ wallet }) {
 
   if (!wallet) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[70vh] text-center">
-        <h1 className="text-3xl font-bold tracking-tight mb-3">Connect Wallet</h1>
-        <p className="text-[#6b6b78] text-sm">Connect your wallet to create a contract.</p>
+      <div className="flex flex-col items-center justify-center min-h-[70vh] text-center px-4">
+        <div className="neo-card p-12 max-w-md w-full">
+          <h1 className="text-4xl font-black tracking-tight mb-4 uppercase">Connect Wallet</h1>
+          <p className="text-black/70 font-medium mb-8">Connect your wallet to draft a new contract.</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-lg mx-auto anim-in">
-      {/* Header */}
-      <div className="mb-10">
-        <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-3">
-          New <span className="text-[#b5e853]">Contract</span>
+    <div className="max-w-xl mx-auto anim-in pt-8 px-4">
+      {/* Header Container */}
+      <div className="bg-[var(--color-yellow)] border-2 border-black rounded-t-2xl p-8 shadow-hard relative z-10">
+        <div className="absolute top-0 right-8 -translate-y-1/2 bg-white border-2 border-black px-4 py-1 rounded-full text-xs font-bold uppercase tracking-widest shadow-[2px_2px_0_0_#000]">
+          Draft Mode
+        </div>
+        <h1 className="text-4xl md:text-5xl font-heading font-black tracking-tighter mb-4 text-black uppercase leading-[0.9]">
+          New<br />Contract
         </h1>
-        <p className="text-[#6b6b78] text-[15px]">
-          Lock ETH against a personal commitment. Complete it to get your stake back.
+        <p className="font-bold text-black/70">
+          Lock ETH against a personal goal. Complete it to get your stake back.
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div>
-          <label className="block text-xs text-[#6b6b78] font-medium mb-2 uppercase tracking-wider">Goal</label>
-          <input
-            type="text" placeholder="What are you committing to?"
-            value={goal} onChange={e => setGoal(e.target.value)} disabled={loading}
-            className="input-field"
-          />
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
+      {/* Form Container */}
+      <div className="bg-white border-x-2 border-b-2 border-black rounded-b-2xl p-8 shadow-hard relative z-0 -mt-2">
+        <form onSubmit={handleSubmit} className="space-y-6 pt-4">
+          
           <div>
-            <label className="block text-xs text-[#6b6b78] font-medium mb-2 uppercase tracking-wider">Duration (days)</label>
+            <label className="block text-sm font-bold mb-2 uppercase tracking-wider text-black">Goal</label>
             <input
-              type="number" min="1" placeholder="7"
-              value={days} onChange={e => setDays(e.target.value)} disabled={loading}
-              className="input-field"
+              type="text" placeholder="What are you committing to?"
+              value={goal} onChange={e => setGoal(e.target.value)} disabled={loading}
+              className="neo-input"
             />
           </div>
-          <div>
-            <label className="block text-xs text-[#6b6b78] font-medium mb-2 uppercase tracking-wider">Stake (ETH)</label>
-            <input
-              type="number" min="0.001" step="0.001" placeholder="0.01"
-              value={stake} onChange={e => setStake(e.target.value)} disabled={loading}
-              className="input-field"
-            />
-          </div>
-        </div>
 
-        {/* Status */}
-        {step && (
-          <div className="flex items-center gap-3 py-3 px-4 rounded-xl bg-[rgba(181,232,83,0.05)] border border-[rgba(181,232,83,0.1)]">
-            {loading && <div className="spinner" />}
-            <span className="text-sm text-[#b5e853]">{step}</span>
+          <div className="grid grid-cols-2 gap-6">
+            <div>
+              <label className="block text-sm font-bold mb-2 uppercase tracking-wider text-black">Duration (days)</label>
+              <input
+                type="number" min="1" placeholder="7"
+                value={days} onChange={e => setDays(e.target.value)} disabled={loading}
+                className="neo-input"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-bold mb-2 uppercase tracking-wider text-black">Stake (ETH)</label>
+              <input
+                type="number" min="0.001" step="0.001" placeholder="0.01"
+                value={stake} onChange={e => setStake(e.target.value)} disabled={loading}
+                className="neo-input"
+              />
+            </div>
           </div>
-        )}
-        {error && (
-          <div className="py-3 px-4 rounded-xl bg-[rgba(248,113,113,0.05)] border border-[rgba(248,113,113,0.1)]">
-            <span className="text-sm text-[#f87171]">{error}</span>
-          </div>
-        )}
 
-        <button type="submit" disabled={loading} className="btn-lime w-full justify-center py-4 text-[15px]">
-          {loading ? "Processing..." : "Lock Stake"}
-          {!loading && <span>→</span>}
-        </button>
-      </form>
+          {/* Status */}
+          {step && (
+            <div className="flex items-center gap-3 py-3 px-4 bg-[var(--color-yellow)] border-2 border-black rounded-lg shadow-[2px_2px_0_0_#000]">
+              {loading && <div className="spinner border-black border-t-black" />}
+              <span className="text-sm font-bold text-black uppercase">{step}</span>
+            </div>
+          )}
+          
+          {error && (
+            <div className="py-3 px-4 bg-[#ff5f57] border-2 border-black rounded-lg shadow-[2px_2px_0_0_#000]">
+              <span className="text-sm font-bold text-white uppercase">{error}</span>
+            </div>
+          )}
+
+          <button type="submit" disabled={loading} className="neo-btn w-full justify-center py-4 text-lg translate-push mt-4">
+            {loading ? "Processing..." : "Lock Stake"}
+            {!loading && <span>↗</span>}
+          </button>
+        </form>
+      </div>
     </div>
   );
 }

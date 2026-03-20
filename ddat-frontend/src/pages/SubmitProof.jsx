@@ -1,17 +1,19 @@
-import { useEffect, useState } from "react";
-import { API_BASE, CONTRACT_ADDRESS, DDA_TRACKER_ABI } from "../config";
+import { useEffect, useState, useRef } from "react";
 import { ethers } from "ethers";
+import { CONTRACT_ADDRESS, DDA_TRACKER_ABI, API_BASE } from "../config";
+import { useNavigate } from "react-router-dom";
 
 export default function SubmitProof({ wallet }) {
+  const navigate = useNavigate();
   const [commitments, setCommitments] = useState([]);
-  const [selectedId, setSelectedId] = useState("");
-  const [description, setDescription] = useState("");
-  const [imageFile, setImageFile] = useState(null);
-  const [imagePreview, setImagePreview] = useState(null);
+  const [selectedMatch, setSelectedMatch] = useState("");
+  const [desc, setDesc] = useState("");
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState("");
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState(false);
+  const [imagePreview, setImagePreview] = useState(null);
+  
+  const fileRef = useRef(null);
 
   useEffect(() => {
     if (!wallet) return;
@@ -19,168 +21,178 @@ export default function SubmitProof({ wallet }) {
       .then(r => r.json())
       .then(d => {
         if (d.success) {
-          const active = d.data.filter(c => c.status === "active" || c.status === "pending");
-          setCommitments(active);
-          if (active.length) setSelectedId(active[0]._id);
+          setCommitments(d.data.filter(c => c.status === "active"));
         }
-      })
-      .catch(console.error);
+      });
   }, [wallet]);
 
-  const handleFile = (e) => {
+  const handleImage = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    setImageFile(file);
+    if (file.size > 2 * 1024 * 1024) return setError("Image must be < 2MB for prototype");
+    setError("");
     const reader = new FileReader();
-    reader.onloadend = () => setImagePreview(reader.result);
+    reader.onload = (e) => setImagePreview(e.target.result);
     reader.readAsDataURL(file);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!wallet || !selectedId || !description.trim()) return;
+    if (!selectedMatch) return setError("Select an active contract.");
+    if (!desc) return setError("A log description is required.");
+    
     setLoading(true);
-    setError(""); setSuccess(false); setStep("");
+    setError("");
 
     try {
-      setStep("Awaiting wallet signature...");
+      const dbCom = commitments.find(c => c._id === selectedMatch);
+      if (!dbCom) throw new Error("Invalid selection.");
+      
+      setStep("Signing tx via wallet...");
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
       const contract = new ethers.Contract(CONTRACT_ADDRESS, DDA_TRACKER_ABI, signer);
-      const target = commitments.find(c => c._id === selectedId);
-      if (!target) throw new Error("Invalid commitment");
 
-      const tx = await contract.submitProof(target.contractCommitmentId);
+      const tx = await contract.submitProof(dbCom.contractCommitmentId);
       setStep("Mining on-chain...");
       await tx.wait();
 
-      setStep("Uploading evidence...");
-      let imageUrl = "";
-      if (imageFile) {
-        imageUrl = await new Promise((res, rej) => {
-          const reader = new FileReader();
-          reader.onloadend = () => res(reader.result);
-          reader.onerror = rej;
-          reader.readAsDataURL(imageFile);
-        });
-      }
-
-      const resp = await fetch(`${API_BASE}/proof/${selectedId}`, {
+      setStep("Syncing to database...");
+      const res = await fetch(`${API_BASE}/proof/${selectedMatch}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ walletAddress: wallet, description: description.trim(), imageUrl }),
+        body: JSON.stringify({ description: desc, imageUrl: imagePreview }),
       });
-      const data = await resp.json();
+      const data = await res.json();
       if (!data.success) throw new Error(data.error);
 
-      setSuccess(true);
-      setStep("");
-      setDescription("");
-      setImageFile(null);
-      setImagePreview(null);
+      setStep("Proof accepted.");
+      setTimeout(() => navigate("/feed"), 1500);
     } catch (err) {
-      setError(err.shortMessage || err.message);
+      setError(err.shortMessage || err.message || "Failed to submit.");
       setStep("");
-    } finally {
       setLoading(false);
     }
   };
 
   if (!wallet) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[70vh] text-center">
-        <h1 className="text-3xl font-bold tracking-tight mb-3">Connect Wallet</h1>
-        <p className="text-[#6b6b78] text-sm">Connect your wallet to submit evidence.</p>
+      <div className="flex flex-col items-center justify-center min-h-[70vh] text-center px-4">
+        <div className="neo-card p-12 max-w-md w-full">
+          <h1 className="text-4xl font-black tracking-tight mb-4 uppercase">Connect Wallet</h1>
+          <p className="text-black/70 font-medium mb-8">Connect your wallet to upload evidence.</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-lg mx-auto anim-in">
-      <div className="mb-10">
-        <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-3">
-          Submit <span className="text-[#b5e853]">Evidence</span>
+    <div className="max-w-2xl mx-auto anim-in pt-8 px-4">
+      {/* Header Container */}
+      <div className="bg-[var(--color-sage)] border-2 border-black rounded-t-2xl p-8 shadow-hard relative z-10">
+        <div className="absolute top-0 right-8 -translate-y-1/2 bg-white border-2 border-black px-4 py-1 rounded-full text-xs font-bold uppercase tracking-widest shadow-[2px_2px_0_0_#000]">
+          Evidence Mode
+        </div>
+        <h1 className="text-4xl md:text-5xl font-heading font-black tracking-tighter mb-4 text-black uppercase leading-[0.9]">
+          Submit<br />Proof
         </h1>
-        <p className="text-[#6b6b78] text-[15px]">
-          Prove you completed your commitment with a log and optional image.
+        <p className="font-bold text-black/70">
+          Upload undeniable visual and written evidence of your progress.
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div>
-          <label className="block text-xs text-[#6b6b78] font-medium mb-2 uppercase tracking-wider">Contract</label>
-          <select
-            value={selectedId} onChange={e => setSelectedId(e.target.value)}
-            disabled={!commitments.length}
-            className="input-field cursor-pointer bg-[rgba(255,255,255,0.03)]"
-          >
-            {!commitments.length ? (
-              <option>No active contracts</option>
-            ) : commitments.map(c => (
-              <option key={c._id} value={c._id} style={{ background: "#131316" }}>
-                {c.goalText} — {c.stakeAmount} ETH
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-xs text-[#6b6b78] font-medium mb-2 uppercase tracking-wider">Daily Log</label>
-          <textarea
-            rows={3} placeholder="Describe what you accomplished..."
-            value={description} onChange={e => setDescription(e.target.value)}
-            className="input-field resize-none"
-          />
-        </div>
-
-        <div>
-          <label className="block text-xs text-[#6b6b78] font-medium mb-2 uppercase tracking-wider">Image (optional)</label>
-          {!imagePreview ? (
-            <label className="glass-card flex flex-col items-center justify-center p-10 cursor-pointer text-center">
-              <input type="file" accept="image/*" onChange={handleFile} className="hidden" />
-              <svg className="w-8 h-8 text-[#4a4a55] mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-              </svg>
-              <p className="text-sm text-[#6b6b78]">Click to upload</p>
-              <p className="text-xs text-[#4a4a55] mt-1">PNG, JPG, WebP</p>
-            </label>
-          ) : (
-            <div className="relative rounded-2xl overflow-hidden">
-              <img src={imagePreview} alt="" className="w-full aspect-video object-cover" />
-              <button
-                type="button"
-                onClick={() => { setImageFile(null); setImagePreview(null); }}
-                className="absolute top-3 right-3 btn-outline btn-sm text-xs bg-[#050507]/70 backdrop-blur-sm"
+      {/* Form Container */}
+      <div className="bg-white border-x-2 border-b-2 border-black rounded-b-2xl p-8 shadow-hard relative z-0 -mt-2">
+        <form onSubmit={handleSubmit} className="space-y-6 pt-4">
+          
+          <div>
+            <label className="block text-sm font-bold mb-2 uppercase tracking-wider text-black">Target Contract</label>
+            <div className="relative">
+              <select
+                value={selectedMatch} onChange={e => setSelectedMatch(e.target.value)} disabled={loading}
+                className="neo-input appearance-none bg-white cursor-pointer"
               >
-                Remove
-              </button>
+                <option value="">-- Select Active Position --</option>
+                {commitments.map(c => (
+                  <option key={c._id} value={c._id}>
+                    CID:#{c.contractCommitmentId} - {c.goalText}
+                  </option>
+                ))}
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-black">
+                <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+              </div>
+            </div>
+            {commitments.length === 0 && (
+               <p className="text-sm font-bold text-[#ff5f57] mt-3 bg-[#f4f4f5] border-2 border-dashed border-[#ff5f57] p-2 rounded-md">
+                 No active contracts found.
+               </p>
+            )}
+          </div>
+
+          <div>
+             <label className="block text-sm font-bold mb-2 uppercase tracking-wider text-black">Evidence Upload (Max 2MB)</label>
+             <input type="file" accept="image/*" className="hidden" ref={fileRef} onChange={handleImage} disabled={loading} />
+             
+             <div 
+               onClick={() => !loading && fileRef.current?.click()}
+               className={`border-2 border-dashed border-black rounded-xl p-8 text-center cursor-pointer transition-colors ${
+                 imagePreview ? 'bg-black/5' : 'bg-[#f4f4f5] hover:bg-[var(--color-yellow)]'
+               }`}
+             >
+               {imagePreview ? (
+                 <div className="relative">
+                    <img src={imagePreview} alt="Preview" className="max-h-48 mx-auto rounded-lg border-2 border-black rotate-1 shadow-hard" />
+                    <button 
+                      type="button" 
+                      onClick={(e) => { e.stopPropagation(); setImagePreview(null); }}
+                      className="absolute -top-4 -right-4 bg-black text-white w-8 h-8 rounded-full border-2 border-black flex items-center justify-center font-black hover:bg-[#ff5f57]"
+                    >
+                      X
+                    </button>
+                 </div>
+               ) : (
+                 <div className="flex flex-col items-center text-black/60 pt-4 pb-4">
+                   <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="mb-4">
+                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                     <polyline points="17 8 12 3 7 8"></polyline>
+                     <line x1="12" y1="3" x2="12" y2="15"></line>
+                   </svg>
+                   <span className="font-bold uppercase tracking-wider">Tap to upload proof image</span>
+                 </div>
+               )}
+             </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-bold mb-2 uppercase tracking-wider text-black">Log / Notes</label>
+            <textarea
+              placeholder="Detail your progress for the community..." rows={4}
+              value={desc} onChange={e => setDesc(e.target.value)} disabled={loading}
+              className="neo-input resize-y"
+            />
+          </div>
+
+          {/* Status */}
+          {step && (
+            <div className="flex items-center gap-3 py-3 px-4 bg-[var(--color-sage)] border-2 border-black rounded-lg shadow-[2px_2px_0_0_#000]">
+              {loading && <div className="spinner border-black border-t-black" />}
+              <span className="text-sm font-bold text-black uppercase">{step}</span>
             </div>
           )}
-        </div>
+          
+          {error && (
+            <div className="py-3 px-4 bg-[#ff5f57] border-2 border-black rounded-lg shadow-[2px_2px_0_0_#000]">
+              <span className="text-sm font-bold text-white uppercase">{error}</span>
+            </div>
+          )}
 
-        {/* Status */}
-        {step && (
-          <div className="flex items-center gap-3 py-3 px-4 rounded-xl bg-[rgba(181,232,83,0.05)] border border-[rgba(181,232,83,0.1)]">
-            <div className="spinner" />
-            <span className="text-sm text-[#b5e853]">{step}</span>
-          </div>
-        )}
-        {error && (
-          <div className="py-3 px-4 rounded-xl bg-[rgba(248,113,113,0.05)] border border-[rgba(248,113,113,0.1)]">
-            <span className="text-sm text-[#f87171]">{error}</span>
-          </div>
-        )}
-        {success && (
-          <div className="py-3 px-4 rounded-xl bg-[rgba(181,232,83,0.05)] border border-[rgba(181,232,83,0.1)]">
-            <span className="text-sm text-[#b5e853]">Evidence submitted — awaiting consensus.</span>
-          </div>
-        )}
-
-        <button type="submit" disabled={loading || !commitments.length} className="btn-lime w-full justify-center py-4 text-[15px]">
-          {loading ? "Processing..." : "Submit Proof"}
-          {!loading && <span>→</span>}
-        </button>
-      </form>
+          <button type="submit" disabled={loading} className="neo-btn neo-btn-sage w-full justify-center py-4 text-lg translate-push mt-4">
+            {loading ? "PROCESSING..." : "REGISTER EVIDENCE"}
+            {!loading && <span>↗</span>}
+          </button>
+        </form>
+      </div>
     </div>
   );
 }
