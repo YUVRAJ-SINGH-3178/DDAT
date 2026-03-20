@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { ethers } from "ethers";
 import { CONTRACT_ADDRESS, DDA_TRACKER_ABI, API_BASE } from "../config";
 import { useNavigate } from "react-router-dom";
+import TransactionStatus from "../components/TransactionStatus";
 
 export default function SubmitProof({ wallet }) {
   const navigate = useNavigate();
@@ -9,8 +10,9 @@ export default function SubmitProof({ wallet }) {
   const [selectedMatch, setSelectedMatch] = useState("");
   const [desc, setDesc] = useState("");
   const [loading, setLoading] = useState(false);
-  const [step, setStep] = useState("");
-  const [error, setError] = useState("");
+  const [txStatus, setTxStatus] = useState("");
+  const [txMessage, setTxMessage] = useState("");
+  const [txHash, setTxHash] = useState("");
   const [imagePreview, setImagePreview] = useState(null);
   
   const fileRef = useRef(null);
@@ -29,8 +31,13 @@ export default function SubmitProof({ wallet }) {
   const handleImage = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    if (file.size > 2 * 1024 * 1024) return setError("Image must be < 2MB for prototype");
-    setError("");
+    if (file.size > 2 * 1024 * 1024) {
+      setTxStatus("error");
+      setTxMessage("Image must be < 2MB for prototype");
+      return;
+    }
+    setTxStatus("");
+    setTxMessage("");
     const reader = new FileReader();
     reader.onload = (e) => setImagePreview(e.target.result);
     reader.readAsDataURL(file);
@@ -38,39 +45,62 @@ export default function SubmitProof({ wallet }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!selectedMatch) return setError("Select an active contract.");
-    if (!desc) return setError("A log description is required.");
+    if (!selectedMatch) {
+      setTxStatus("error");
+      setTxMessage("Select an active contract.");
+      return;
+    }
+    if (!desc) {
+      setTxStatus("error");
+      setTxMessage("A log description is required.");
+      return;
+    }
     
     setLoading(true);
-    setError("");
+    setTxStatus("");
+    setTxMessage("");
+    setTxHash("");
 
     try {
       const dbCom = commitments.find(c => c._id === selectedMatch);
       if (!dbCom) throw new Error("Invalid selection.");
       
-      setStep("Signing tx via wallet...");
+      setTxStatus("waiting");
+      setTxMessage("Waiting for wallet approval...");
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
       const contract = new ethers.Contract(CONTRACT_ADDRESS, DDA_TRACKER_ABI, signer);
 
-      const tx = await contract.submitProof(dbCom.contractCommitmentId);
-      setStep("Mining on-chain...");
-      await tx.wait();
+      try {
+        const tx = await contract.submitProof(dbCom.contractCommitmentId);
+        setTxStatus("mining");
+        setTxMessage("Transaction Mining On-Chain...");
+        setTxHash(tx.hash);
+        await tx.wait();
+      } catch (txErr) {
+        const errStr = String(txErr.message || txErr.reason || txErr);
+        if (errStr.includes("proof already submitted")) {
+          setTxMessage("Recovering: Proof already on-chain...");
+        } else {
+          throw txErr;
+        }
+      }
 
-      setStep("Syncing to database...");
+      setTxMessage("Syncing to database...");
       const res = await fetch(`${API_BASE}/proof/${selectedMatch}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ description: desc, imageUrl: imagePreview }),
+        body: JSON.stringify({ walletAddress: wallet, description: desc, imageUrl: imagePreview }),
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error);
 
-      setStep("Proof accepted.");
+      setTxStatus("success");
+      setTxMessage("Proof accepted.");
       setTimeout(() => navigate("/feed"), 1500);
     } catch (err) {
-      setError(err.shortMessage || err.message || "Failed to submit.");
-      setStep("");
+      setTxStatus("error");
+      setTxMessage(err.shortMessage || err.message || "Failed to submit.");
       setLoading(false);
     }
   };
@@ -174,18 +204,7 @@ export default function SubmitProof({ wallet }) {
           </div>
 
           {/* Status */}
-          {step && (
-            <div className="flex items-center gap-3 py-3 px-4 bg-[var(--color-sage)] border-2 border-black rounded-lg shadow-[2px_2px_0_0_#000]">
-              {loading && <div className="spinner border-black border-t-black" />}
-              <span className="text-sm font-bold text-black uppercase">{step}</span>
-            </div>
-          )}
-          
-          {error && (
-            <div className="py-3 px-4 bg-[#ff5f57] border-2 border-black rounded-lg shadow-[2px_2px_0_0_#000]">
-              <span className="text-sm font-bold text-white uppercase">{error}</span>
-            </div>
-          )}
+          <TransactionStatus status={txStatus} message={txMessage} txHash={txHash} />
 
           <button type="submit" disabled={loading} className="neo-btn neo-btn-sage w-full justify-center py-4 text-lg translate-push mt-4">
             {loading ? "PROCESSING..." : "REGISTER EVIDENCE"}
