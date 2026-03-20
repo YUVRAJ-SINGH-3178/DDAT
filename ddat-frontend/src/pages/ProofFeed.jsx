@@ -21,7 +21,7 @@ export default function ProofFeed({ wallet }) {
       const res = await fetch(`${API_BASE}/vote/${proofId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ voterAddress: wallet, approve }),
+        body: JSON.stringify({ walletAddress: wallet, vote: approve ? "yes" : "no" }),
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error);
