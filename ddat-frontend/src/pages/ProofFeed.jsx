@@ -4,6 +4,8 @@ import { API_BASE } from "../config";
 export default function ProofFeed({ wallet }) {
   const [proofs, setProofs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [voteMessage, setVoteMessage] = useState("");
+  const [voteMessageType, setVoteMessageType] = useState("info");
 
   useEffect(() => {
     fetch(`${API_BASE}/proofs/feed`)
@@ -16,7 +18,13 @@ export default function ProofFeed({ wallet }) {
   }, []);
 
   const handleVote = async (proofId, approve) => {
-    if (!wallet) return alert("Connect wallet to vote.");
+    if (!wallet) {
+      setVoteMessageType("error");
+      setVoteMessage("Connect wallet to vote.");
+      return;
+    }
+
+    setVoteMessage("");
     try {
       const res = await fetch(`${API_BASE}/vote/${proofId}`, {
         method: "POST",
@@ -29,13 +37,26 @@ export default function ProofFeed({ wallet }) {
       // Optimistic update
       setProofs(prev => prev.map(p => {
         if (p._id === proofId) {
-          const v = data.vote; // return updated vote counts
-          return { ...p, votesFor: v?.votesFor ?? p.votesFor + (approve ? 1 : 0), votesAgainst: v?.votesAgainst ?? p.votesAgainst + (!approve ? 1 : 0) };
+          const voteResult = data.data;
+          return {
+            ...p,
+            voteYes: voteResult?.voteYes ?? p.voteYes + (approve ? 1 : 0),
+            voteNo: voteResult?.voteNo ?? p.voteNo + (!approve ? 1 : 0),
+            votedBy: voteResult?.votedBy ?? [...(p.votedBy || []), wallet.toLowerCase()],
+          };
         }
         return p;
       }));
+
+      setVoteMessageType("success");
+      setVoteMessage(
+        data.data?.thresholdReached
+          ? `Vote recorded. Day ${data.data?.currentDay} resolved as ${data.data?.proofStatus}. Progress ${data.data?.acceptedProofCount}/${data.data?.requiredProofCount}.`
+          : "Vote recorded. Waiting for more voters to reach threshold."
+      );
     } catch (err) {
-      alert(err.message || "Vote failed");
+      setVoteMessageType("error");
+      setVoteMessage(err.message || "Vote failed");
     }
   };
 
@@ -51,6 +72,18 @@ export default function ProofFeed({ wallet }) {
           Review evidence. Cast your vote. Enforce accountability.
         </p>
       </div>
+
+      {voteMessage && (
+        <div
+          className={`mb-8 border-2 border-black rounded-xl p-4 font-bold uppercase text-sm shadow-hard ${
+            voteMessageType === "error"
+              ? "bg-[#ff5f57] text-white"
+              : "bg-[var(--color-sage)] text-black"
+          }`}
+        >
+          {voteMessage}
+        </div>
+      )}
 
       {loading && (
         <div className="flex items-center gap-3 justify-center py-20 bg-[var(--color-charcoal)] border-2 border-[var(--color-yellow)] rounded-2xl shadow-[8px_8px_0_0_var(--color-yellow)]">
@@ -69,9 +102,9 @@ export default function ProofFeed({ wallet }) {
       {/* ─── Feed ─────────────────────────────────────────── */}
       <div className="space-y-12 stagger">
         {proofs.map(p => {
-          const total = p.votesFor + p.votesAgainst;
-          const ratio = total === 0 ? 0 : (p.votesFor / total) * 100;
-          const userVoted = p.voters?.includes(wallet?.toLowerCase());
+          const total = (p.voteYes || 0) + (p.voteNo || 0);
+          const ratio = total === 0 ? 0 : ((p.voteYes || 0) / total) * 100;
+          const userVoted = p.votedBy?.includes(wallet?.toLowerCase());
           const isOwner = p.commitmentId?.walletAddress?.toLowerCase() === wallet?.toLowerCase();
 
           return (
@@ -81,7 +114,7 @@ export default function ProofFeed({ wallet }) {
                 {/* Left: Evidence Image */}
                 <div className="bg-[#f4f4f5] border-b-2 md:border-b-0 md:border-r-2 border-black p-6 flex flex-col justify-center relative">
                   <div className="absolute top-4 left-4 bg-[var(--color-sage)] border-2 border-black px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider z-10">
-                    CID #{p.commitmentId?.contractCommitmentId || "?"}
+                    CID #{p.commitmentId?.contractCommitmentId || "?"} • DAY {p.dayNumber || "?"}/{p.commitmentId?.durationDays || "?"}
                   </div>
                   {p.imageUrl ? (
                     <img 
