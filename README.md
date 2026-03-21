@@ -9,6 +9,12 @@ DDAT features a strict **Neo-Brutalist** visual identity:
 - **Palette:** High-contrast Charcoal (`#171e19`), vibrant Yellow (`#ffe17c`), and muted Sage (`#b7c6c2`).
 - **Mechanics:** 2px thick black borders on all interactive elements, paired with 0px blur hard shadows. Buttons feature a mechanical "push" translation on hover.
 
+## 🚀 Recent Updates
+
+- **Detailed Transaction States:** Real-time UI feedback for blockchain interactions, including "Waiting for Signature", "Mining On-Chain" (with direct Sepolia Etherscan links), and state recovery features if backend synchronization fails.
+- **Interactive Learn More Modal:** A custom `<dialog>`-style portal overlay explaining the app's workflow seamlessly from the landing page.
+- **Persistent Sessions:** True "Wallet Disconnect" functionality utilizing local storage to prevent unwanted auto-reconnections on page refresh.
+
 ## How It Works
 
 1. **Stake** — Lock ETH into a smart contract with a goal and deadline
