@@ -1,7 +1,17 @@
 const express = require("express");
 const router = express.Router();
+const mongoose = require("mongoose");
+const { ethers } = require("ethers");
 const Proof = require("../models/Proof");
 const Commitment = require("../models/Commitment");
+
+function getBase64ImageBytes(dataUrl) {
+  if (!dataUrl || typeof dataUrl !== "string") return 0;
+  const commaIdx = dataUrl.indexOf(",");
+  if (commaIdx === -1) return 0;
+  const base64Part = dataUrl.slice(commaIdx + 1);
+  return Buffer.byteLength(base64Part, "base64");
+}
 
 // ─── POST /api/proof/:commitmentId — Submit proof for a commitment ──────────
 router.post("/:commitmentId", async (req, res) => {
@@ -9,12 +19,43 @@ router.post("/:commitmentId", async (req, res) => {
     const { commitmentId } = req.params;
     const { walletAddress, description, imageUrl } = req.body;
 
+    if (!mongoose.Types.ObjectId.isValid(commitmentId)) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid commitment id",
+      });
+    }
+
     // Validate required fields
     if (!walletAddress || !description) {
       return res.status(400).json({
         success: false,
         error: "Missing required fields: walletAddress, description",
       });
+    }
+
+    if (!ethers.isAddress(walletAddress)) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid wallet address",
+      });
+    }
+
+    if (typeof description !== "string" || description.trim().length < 5) {
+      return res.status(400).json({
+        success: false,
+        error: "Description must be at least 5 characters",
+      });
+    }
+
+    if (imageUrl && typeof imageUrl === "string" && imageUrl.startsWith("data:image/")) {
+      const imageBytes = getBase64ImageBytes(imageUrl);
+      if (imageBytes > 2 * 1024 * 1024) {
+        return res.status(400).json({
+          success: false,
+          error: "Image is too large (max 2MB)",
+        });
+      }
     }
 
     // Check commitment exists
@@ -35,32 +76,48 @@ router.post("/:commitmentId", async (req, res) => {
     }
 
     // Check commitment is in a valid state for proof submission
-    if (commitment.status === "completed" || commitment.status === "failed") {
+    if (
+      commitment.status === "settled_success" ||
+      commitment.status === "settled_failed" ||
+      commitment.status === "completed" ||
+      commitment.status === "failed"
+    ) {
       return res.status(400).json({
         success: false,
         error: `Commitment is already ${commitment.status}`,
       });
     }
 
-    // Check if proof already exists for this commitment
-    const existingProof = await Proof.findOne({ commitmentId });
-    if (existingProof) {
+    if (commitment.acceptedProofCount >= commitment.durationDays) {
       return res.status(400).json({
         success: false,
-        error: "Proof has already been submitted for this commitment",
+        error: "Commitment already has all required accepted proofs",
       });
     }
+
+    // Allow only one proof under vote at a time.
+    const pendingProof = await Proof.findOne({ commitmentId, status: "pending" });
+    if (pendingProof) {
+      return res.status(400).json({
+        success: false,
+        error: "A proof is already in voting. Wait for it to be resolved before submitting the next day.",
+      });
+    }
+
+    const nextDayNumber = (commitment.acceptedProofCount || 0) + 1;
 
     // Create proof
     const proof = await Proof.create({
       commitmentId,
       walletAddress: walletAddress.toLowerCase(),
       description,
+      dayNumber: nextDayNumber,
+      status: "pending",
       imageUrl: imageUrl || "",
     });
 
-    // Update commitment status to active (proof submitted, awaiting votes)
-    commitment.status = "active";
+    // Move commitment into voting phase after proof submission.
+    commitment.status = "proving";
     await commitment.save();
 
     res.status(201).json({
@@ -79,15 +136,16 @@ router.post("/:commitmentId", async (req, res) => {
 // ─── GET /api/proofs/feed — Get all proofs needing votes ────────────────────
 router.get("/feed", async (req, res) => {
   try {
-    // Find proofs whose parent commitment is still "active" (not yet resolved)
+    // Find proofs whose parent commitment is still in voting phase.
     const activeCommitmentIds = await Commitment.find({
-      status: "active",
+      status: { $in: ["proving", "active"] },
     }).distinct("_id");
 
     const proofs = await Proof.find({
       commitmentId: { $in: activeCommitmentIds },
+      $or: [{ status: "pending" }, { status: { $exists: false } }, { status: null }],
     })
-      .populate("commitmentId", "goalText durationDays stakeAmount status")
+      .populate("commitmentId", "walletAddress goalText durationDays stakeAmount status")
       .sort({ createdAt: -1 });
 
     res.json({

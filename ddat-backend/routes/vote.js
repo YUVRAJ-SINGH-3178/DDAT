@@ -1,5 +1,7 @@
 const express = require("express");
 const router = express.Router();
+const mongoose = require("mongoose");
+const { ethers } = require("ethers");
 const Proof = require("../models/Proof");
 const Commitment = require("../models/Commitment");
 const { settleCommitment } = require("../services/contractService");
@@ -13,11 +15,25 @@ router.post("/:proofId", async (req, res) => {
     const { proofId } = req.params;
     const { walletAddress, vote } = req.body;
 
+    if (!mongoose.Types.ObjectId.isValid(proofId)) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid proof id",
+      });
+    }
+
     // ── Validate input ──────────────────────────────────────────────────
     if (!walletAddress || !vote) {
       return res.status(400).json({
         success: false,
         error: "Missing required fields: walletAddress, vote (yes/no)",
+      });
+    }
+
+    if (!ethers.isAddress(walletAddress)) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid wallet address",
       });
     }
 
@@ -38,12 +54,31 @@ router.post("/:proofId", async (req, res) => {
       });
     }
 
+    if (proof.status && proof.status !== "pending") {
+      return res.status(400).json({
+        success: false,
+        error: "This proof is already resolved",
+      });
+    }
+
+    if (!proof.status) {
+      proof.status = "pending";
+    }
+
     // ── Check the parent commitment is still active ─────────────────────
     const commitment = await Commitment.findById(proof.commitmentId);
-    if (!commitment || commitment.status !== "active") {
+    if (!commitment || !["proving", "active"].includes(commitment.status)) {
       return res.status(400).json({
         success: false,
         error: "This commitment is no longer accepting votes",
+      });
+    }
+
+    // Proof owner cannot vote on their own evidence.
+    if (commitment.walletAddress === walletAddress.toLowerCase()) {
+      return res.status(400).json({
+        success: false,
+        error: "You cannot vote on your own proof",
       });
     }
 
@@ -71,19 +106,33 @@ router.post("/:proofId", async (req, res) => {
 
     if (totalVotes >= VOTE_THRESHOLD) {
       const yesPercentage = (proof.voteYes / totalVotes) * 100;
-      const isSuccess = yesPercentage >= 60;
+      const proofAccepted = yesPercentage >= 60;
 
-      if (isSuccess) {
-        commitment.status = "completed";
-        thresholdResult = "completed";
+      proof.status = proofAccepted ? "accepted" : "rejected";
+      proof.resolvedAt = new Date();
+      await proof.save();
+
+      if (proofAccepted) {
+        commitment.acceptedProofCount = (commitment.acceptedProofCount || 0) + 1;
+
+        if (commitment.acceptedProofCount >= commitment.durationDays) {
+          commitment.status = "settled_success";
+          thresholdResult = "settled_success";
+        } else {
+          commitment.status = "created";
+          thresholdResult = "created";
+        }
       } else {
-        commitment.status = "failed";
-        thresholdResult = "failed";
+        commitment.status = "settled_failed";
+        thresholdResult = "settled_failed";
       }
       await commitment.save();
 
-      // ── Auto-settle on-chain if contract commitment ID exists ───────
-      if (commitment.contractCommitmentId != null) {
+      // ── Auto-settle on-chain only when commitment is finally settled ─
+      if (
+        commitment.contractCommitmentId != null &&
+        ["settled_success", "settled_failed"].includes(commitment.status)
+      ) {
         try {
           console.log(
             `\n🗳️  Vote threshold reached for commitment ${commitment._id}`
@@ -97,7 +146,7 @@ router.post("/:proofId", async (req, res) => {
 
           onChainTx = await settleCommitment(
             commitment.contractCommitmentId,
-            isSuccess
+            commitment.status === "settled_success"
           );
         } catch (chainError) {
           // Log but don't fail the vote — the DB status is already updated
@@ -119,6 +168,11 @@ router.post("/:proofId", async (req, res) => {
       data: {
         voteYes: proof.voteYes,
         voteNo: proof.voteNo,
+        votedBy: proof.votedBy,
+        proofStatus: proof.status,
+        currentDay: proof.dayNumber,
+        acceptedProofCount: commitment.acceptedProofCount || 0,
+        requiredProofCount: commitment.durationDays,
         totalVotes,
         thresholdReached: totalVotes >= VOTE_THRESHOLD,
         commitmentStatus: thresholdResult || commitment.status,

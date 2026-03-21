@@ -19,6 +19,20 @@ const proofSchema = new mongoose.Schema({
     trim: true,
     maxlength: [1000, "Description cannot exceed 1000 characters"],
   },
+  dayNumber: {
+    type: Number,
+    required: true,
+    min: 1,
+  },
+  status: {
+    type: String,
+    enum: {
+      values: ["pending", "accepted", "rejected"],
+      message: "{VALUE} is not a valid proof status",
+    },
+    default: "pending",
+    index: true,
+  },
   imageUrl: {
     type: String,
     default: "",
@@ -37,6 +51,10 @@ const proofSchema = new mongoose.Schema({
   votedBy: {
     type: [String], // array of wallet addresses that have voted
     default: [],
+  },
+  resolvedAt: {
+    type: Date,
+    default: null,
   },
   createdAt: {
     type: Date,

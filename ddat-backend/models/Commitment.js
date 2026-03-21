@@ -19,6 +19,11 @@ const commitmentSchema = new mongoose.Schema({
     required: [true, "Duration in days is required"],
     min: [1, "Duration must be at least 1 day"],
   },
+  acceptedProofCount: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
   stakeAmount: {
     type: String, // stored as string to preserve BigNumber precision
     required: [true, "Stake amount is required"],
@@ -30,10 +35,10 @@ const commitmentSchema = new mongoose.Schema({
   status: {
     type: String,
     enum: {
-      values: ["pending", "active", "completed", "failed"],
+      values: ["created", "proving", "settled_success", "settled_failed"],
       message: "{VALUE} is not a valid status",
     },
-    default: "pending",
+    default: "created",
     index: true,
   },
   createdAt: {

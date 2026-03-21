@@ -1,5 +1,6 @@
 const express = require("express");
 const router = express.Router();
+const { ethers } = require("ethers");
 const Commitment = require("../models/Commitment");
 const User = require("../models/User");
 
@@ -23,6 +24,27 @@ router.post("/", async (req, res) => {
       });
     }
 
+    if (!ethers.isAddress(walletAddress)) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid wallet address",
+      });
+    }
+
+    if (!Number.isFinite(Number(durationDays)) || Number(durationDays) < 1) {
+      return res.status(400).json({
+        success: false,
+        error: "durationDays must be a number >= 1",
+      });
+    }
+
+    if (!Number.isFinite(Number(stakeAmount)) || Number(stakeAmount) <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: "stakeAmount must be a positive number",
+      });
+    }
+
     // Upsert user (create if doesn't exist)
     await User.findOneAndUpdate(
       { walletAddress: walletAddress.toLowerCase() },
@@ -37,7 +59,7 @@ router.post("/", async (req, res) => {
       durationDays,
       stakeAmount,
       contractCommitmentId: contractCommitmentId ?? null,
-      status: contractCommitmentId != null ? "active" : "pending",
+      status: "created",
     });
 
     res.status(201).json({
@@ -57,6 +79,13 @@ router.post("/", async (req, res) => {
 router.get("/:walletAddress", async (req, res) => {
   try {
     const { walletAddress } = req.params;
+
+    if (!ethers.isAddress(walletAddress)) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid wallet address",
+      });
+    }
 
     const commitments = await Commitment.find({
       walletAddress: walletAddress.toLowerCase(),
