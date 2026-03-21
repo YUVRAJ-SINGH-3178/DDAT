@@ -1,6 +1,7 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
+const helmet = require("helmet");
 const morgan = require("morgan");
 const { rateLimit } = require("express-rate-limit");
 const connectDB = require("./config/db");
@@ -9,9 +10,9 @@ const connectDB = require("./config/db");
 const commitmentRoutes = require("./routes/commitment");
 const proofRoutes = require("./routes/proof");
 const voteRoutes = require("./routes/vote");
+const userRoutes = require("./routes/user");
 
 // ─── Initialize app ─────────────────────────────────────────────────────────
-const app = express();
 const PORT = process.env.PORT || 5000;
 
 // ─── Rate limiters ──────────────────────────────────────────────────────────
@@ -39,48 +40,71 @@ const voteLimiter = rateLimit({
   message: { success: false, error: "Too many votes. Try again later." },
 });
 
-// ─── Middleware ──────────────────────────────────────────────────────────────
-app.use(cors());
-app.use(globalLimiter);
-app.use(express.json({ limit: "50mb" }));
-app.use(express.urlencoded({ limit: "50mb", extended: true }));
-app.use(morgan("dev"));
+function createApp() {
+  const app = express();
 
-// ─── Routes ─────────────────────────────────────────────────────────────────
-app.use("/api/commitment", writeLimiter, commitmentRoutes);   // POST /api/commitment
-app.use("/api/commitments", commitmentRoutes);                // GET  /api/commitments/:walletAddress
-app.use("/api/proof", writeLimiter, proofRoutes);             // POST /api/proof/:commitmentId
-app.use("/api/proofs", proofRoutes);                          // GET  /api/proofs/feed
-app.use("/api/vote", voteLimiter, voteRoutes);                // POST /api/vote/:proofId
+  // ─── Middleware ────────────────────────────────────────────────────────────
+  const corsOrigins = (process.env.CORS_ORIGINS || "")
+    .split(",")
+    .map((o) => o.trim())
+    .filter(Boolean);
 
-// ─── Health check ───────────────────────────────────────────────────────────
-app.get("/api/health", (req, res) => {
-  res.json({
-    status: "ok",
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
+  app.use(
+    cors(
+      corsOrigins.length > 0
+        ? {
+            origin: corsOrigins,
+            methods: ["GET", "POST", "DELETE", "OPTIONS"],
+          }
+        : undefined
+    )
+  );
+  app.use(helmet());
+  app.use(globalLimiter);
+  app.use(express.json({ limit: "5mb" }));
+  app.use(express.urlencoded({ limit: "5mb", extended: true }));
+  app.use(morgan("dev"));
+
+  // ─── Routes ───────────────────────────────────────────────────────────────
+  app.use("/api/commitment", writeLimiter, commitmentRoutes);   // POST /api/commitment
+  app.use("/api/commitments", commitmentRoutes);                // GET  /api/commitments/:walletAddress
+  app.use("/api/proof", writeLimiter, proofRoutes);             // POST /api/proof/:commitmentId
+  app.use("/api/proofs", proofRoutes);                          // GET  /api/proofs/feed
+  app.use("/api/vote", voteLimiter, voteRoutes);                // POST /api/vote/:proofId
+  app.use("/api/user", userRoutes);                             // GET/DELETE /api/user/:wallet
+
+  // ─── Health check ─────────────────────────────────────────────────────────
+  app.get("/api/health", (req, res) => {
+    res.json({
+      status: "ok",
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+    });
   });
-});
 
-// ─── 404 handler ────────────────────────────────────────────────────────────
-app.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    error: `Route not found: ${req.method} ${req.originalUrl}`,
+  // ─── 404 handler ──────────────────────────────────────────────────────────
+  app.use((req, res) => {
+    res.status(404).json({
+      success: false,
+      error: `Route not found: ${req.method} ${req.originalUrl}`,
+    });
   });
-});
 
-// ─── Global error handler ───────────────────────────────────────────────────
-app.use((err, req, res, next) => {
-  console.error("Unhandled error:", err);
-  res.status(500).json({
-    success: false,
-    error: "Internal server error",
+  // ─── Global error handler ─────────────────────────────────────────────────
+  app.use((err, req, res, next) => {
+    console.error("Unhandled error:", err);
+    res.status(500).json({
+      success: false,
+      error: "Internal server error",
+    });
   });
-});
+
+  return app;
+}
 
 // ─── Start server ───────────────────────────────────────────────────────────
 const startServer = async () => {
+  const app = createApp();
   await connectDB();
   app.listen(PORT, () => {
     console.log(`\n🚀 DDAT Backend running on http://localhost:${PORT}`);
@@ -88,4 +112,8 @@ const startServer = async () => {
   });
 };
 
-startServer();
+if (require.main === module) {
+  startServer();
+}
+
+module.exports = { createApp, startServer };
