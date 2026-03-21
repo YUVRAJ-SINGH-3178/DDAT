@@ -1,6 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { ethers } from "ethers";
-import { CONTRACT_ADDRESS, DDA_TRACKER_ABI, API_BASE } from "../config";
+import { API_BASE } from "../config";
 import { useNavigate } from "react-router-dom";
 import TransactionStatus from "../components/TransactionStatus";
 
@@ -23,7 +22,9 @@ export default function SubmitProof({ wallet }) {
       .then(r => r.json())
       .then(d => {
         if (d.success) {
-          setCommitments(d.data.filter(c => c.status === "active"));
+            setCommitments(
+              d.data.filter((c) => ["created", "proving", "active", "pending"].includes(c.status))
+          );
         }
       });
   }, [wallet]);
@@ -64,29 +65,9 @@ export default function SubmitProof({ wallet }) {
     try {
       const dbCom = commitments.find(c => c._id === selectedMatch);
       if (!dbCom) throw new Error("Invalid selection.");
-      
+
       setTxStatus("waiting");
-      setTxMessage("Waiting for wallet approval...");
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const signer = await provider.getSigner();
-      const contract = new ethers.Contract(CONTRACT_ADDRESS, DDA_TRACKER_ABI, signer);
-
-      try {
-        const tx = await contract.submitProof(dbCom.contractCommitmentId);
-        setTxStatus("mining");
-        setTxMessage("Transaction Mining On-Chain...");
-        setTxHash(tx.hash);
-        await tx.wait();
-      } catch (txErr) {
-        const errStr = String(txErr.message || txErr.reason || txErr);
-        if (errStr.includes("proof already submitted")) {
-          setTxMessage("Recovering: Proof already on-chain...");
-        } else {
-          throw txErr;
-        }
-      }
-
-      setTxMessage("Syncing to database...");
+      setTxMessage("Submitting evidence for community review...");
       const res = await fetch(`${API_BASE}/proof/${selectedMatch}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -96,11 +77,12 @@ export default function SubmitProof({ wallet }) {
       if (!data.success) throw new Error(data.error);
 
       setTxStatus("success");
-      setTxMessage("Proof accepted.");
+      setTxMessage("Evidence submitted. Waiting for votes.");
       setTimeout(() => navigate("/feed"), 1500);
     } catch (err) {
       setTxStatus("error");
       setTxMessage(err.shortMessage || err.message || "Failed to submit.");
+    } finally {
       setLoading(false);
     }
   };

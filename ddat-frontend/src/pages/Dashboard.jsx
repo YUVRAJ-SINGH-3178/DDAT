@@ -5,10 +5,14 @@ import { API_BASE } from "../config";
 import { createPortal } from "react-dom";
 
 const STATUS = {
-  pending:   { label: "Pending",   cls: "tag-pending" },
-  active:    { label: "Active",    cls: "tag-active" },
-  completed: { label: "Settled",   cls: "tag-settled" },
-  failed:    { label: "Forfeited", cls: "tag-failed" },
+  created:        { label: "Created",   cls: "tag-pending" },
+  proving:        { label: "Voting",    cls: "tag-active" },
+  settled_success:{ label: "Settled",   cls: "tag-settled" },
+  settled_failed: { label: "Forfeited", cls: "tag-failed" },
+  pending:        { label: "Pending",   cls: "tag-pending" },
+  active:         { label: "Voting",    cls: "tag-active" },
+  completed:      { label: "Settled",   cls: "tag-settled" },
+  failed:         { label: "Forfeited", cls: "tag-failed" },
 };
 
 export default function Dashboard({ wallet, setWallet }) {
@@ -16,34 +20,67 @@ export default function Dashboard({ wallet, setWallet }) {
   const [loading, setLoading] = useState(false);
   const [balance, setBalance] = useState(null);
   const [showLearnMore, setShowLearnMore] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [heroMessage, setHeroMessage] = useState(null);
 
   const handleConnect = async () => {
-    if (!window.ethereum) return alert("Install MetaMask to continue.");
+    if (!window.ethereum) {
+      setHeroMessage("Install MetaMask to continue.");
+      return;
+    }
+
     try {
       const accs = await window.ethereum.request({ method: "eth_requestAccounts" });
       localStorage.removeItem("walletDisconnected");
       setWallet?.(accs[0]);
+      setHeroMessage(null);
     } catch (err) {
       console.error(err);
+      setHeroMessage("Wallet connection failed. Please try again.");
     }
   };
 
   useEffect(() => {
     if (!wallet) return;
-    setLoading(true);
-    fetch(`${API_BASE}/commitments/${wallet}`)
-      .then(r => r.json())
-      .then(d => { if (d.success) setData(d.data); })
-      .catch(console.error)
-      .finally(() => setLoading(false));
 
-    // Fetch real wallet balance
-    if (window.ethereum) {
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      provider.getBalance(wallet).then(bal => {
-        setBalance(ethers.formatEther(bal));
-      }).catch(console.error);
-    }
+    let isMounted = true;
+
+    const loadDashboard = async () => {
+      setLoading(true);
+
+      try {
+        const response = await fetch(`${API_BASE}/commitments/${wallet}`);
+        const payload = await response.json();
+        if (isMounted && payload.success) {
+          setData(payload.data);
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+
+      // Fetch real wallet balance
+      if (window.ethereum) {
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        provider
+          .getBalance(wallet)
+          .then((bal) => {
+            if (isMounted) {
+              setBalance(ethers.formatEther(bal));
+            }
+          })
+          .catch(console.error);
+      }
+    };
+
+    loadDashboard();
+
+    return () => {
+      isMounted = false;
+    };
   }, [wallet]);
 
   // ─── Hero (not connected) ──────────────────────────────
@@ -84,6 +121,18 @@ export default function Dashboard({ wallet, setWallet }) {
                   Learn More
                 </div>
               </div>
+
+              {heroMessage && (
+                <div className="mt-3 bg-[#ff5f57] border-2 border-black rounded-lg px-4 py-3 shadow-hard flex items-center justify-between max-w-md">
+                  <p className="text-white font-bold uppercase text-xs tracking-wide">{heroMessage}</p>
+                  <button
+                    onClick={() => setHeroMessage(null)}
+                    className="ml-3 w-7 h-7 border-2 border-black rounded-md bg-white text-black font-black text-xs"
+                  >
+                    X
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Right Column: Browser Mockup */}
@@ -159,8 +208,8 @@ export default function Dashboard({ wallet, setWallet }) {
   }
 
   const total = data.reduce((a, c) => a + Number(c.stakeAmount || 0), 0);
-  const active = data.filter(c => c.status === "active" || c.status === "pending").length;
-  const completed = data.filter(c => c.status === "completed").length;
+  const active = data.filter(c => ["created", "proving", "pending", "active"].includes(c.status)).length;
+  const completed = data.filter(c => ["settled_success", "completed"].includes(c.status)).length;
 
   return (
     <div className="anim-in mx-auto w-full pt-8 px-4">
@@ -215,11 +264,31 @@ export default function Dashboard({ wallet, setWallet }) {
       </div>
 
       {/* ─── Header ─────────────────────────────────────── */}
-      <div className="flex items-center justify-between mb-8 p-4 bg-white border-2 border-black rounded-xl shadow-hard">
-        <h2 className="text-2xl font-black uppercase tracking-tight text-black">Your Positions</h2>
-        <Link to="/create" className="neo-btn py-2.5 px-6 translate-push">
-          New Contract ↗
-        </Link>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8 p-4 bg-white border-2 border-black rounded-xl shadow-hard">
+        <h2 className="text-xl sm:text-2xl font-black uppercase tracking-tight text-black">
+          {showHistory ? "Complete History" : "Recent Positions"}
+        </h2>
+        <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+          {!showHistory && data.length > 4 && (
+            <button 
+              onClick={() => setShowHistory(true)}
+              className="neo-btn neo-btn-white py-2.5 px-4 sm:px-6 translate-push text-xs sm:text-sm"
+            >
+              View History ↗
+            </button>
+          )}
+          {showHistory && (
+            <button 
+              onClick={() => setShowHistory(false)}
+              className="neo-btn neo-btn-white py-2.5 px-4 sm:px-6 translate-push text-xs sm:text-sm"
+            >
+              Back to Recent ←
+            </button>
+          )}
+          <Link to="/create" className="neo-btn py-2.5 px-4 sm:px-6 translate-push text-xs sm:text-sm">
+            New Contract ↗
+          </Link>
+        </div>
       </div>
 
       {/* ─── Loading ────────────────────────────────────── */}
@@ -240,8 +309,8 @@ export default function Dashboard({ wallet, setWallet }) {
 
       {/* ─── Position cards ─────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 stagger">
-        {data.map(c => {
-          const s = STATUS[c.status] || STATUS.pending;
+        {(showHistory ? data : data.slice(-4)).map(c => {
+          const s = STATUS[c.status] || STATUS.created;
           return (
             <div key={c._id} className="neo-card p-6 flex flex-col justify-between anim-in hover:-translate-y-1 transition-transform">
               {/* Top */}
@@ -258,14 +327,14 @@ export default function Dashboard({ wallet, setWallet }) {
               </h3>
 
               {/* Bottom */}
-              <div className="flex items-end justify-between pt-4 border-t-2 border-black/10">
+              <div className="flex items-start sm:items-end justify-between pt-4 border-t-2 border-black/10 gap-3">
                 <div>
                   <p className="text-xs font-bold uppercase text-black/50 mb-1 tracking-wider">Duration</p>
                   <p className="text-lg font-bold">{c.durationDays} DAYS</p>
                 </div>
-                <div className="text-right">
+                <div className="text-right break-all">
                   <p className="text-xs font-bold uppercase text-black/50 mb-1 tracking-wider">Stake</p>
-                  <p className="text-2xl font-heading font-black">{c.stakeAmount} ETH</p>
+                  <p className="text-xl sm:text-2xl font-heading font-black">{c.stakeAmount} ETH</p>
                 </div>
               </div>
             </div>

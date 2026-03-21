@@ -48,7 +48,9 @@ export default function CreateCommitment({ wallet }) {
         try {
           const p = contract.interface.parseLog(log);
           if (p?.name === "CommitmentCreated") { cid = Number(p.args.commitmentId); break; }
-        } catch {}
+        } catch {
+          // Ignore unrelated logs from other contracts in the same tx receipt.
+        }
       }
 
       setTxMessage("Syncing database...");
@@ -66,6 +68,7 @@ export default function CreateCommitment({ wallet }) {
     } catch (err) {
       setTxStatus("error");
       setTxMessage(err.shortMessage || err.message || "Transaction failed.");
+    } finally {
       setLoading(false);
     }
   };
@@ -109,7 +112,7 @@ export default function CreateCommitment({ wallet }) {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             <div>
               <label className="block text-sm font-bold mb-2 uppercase tracking-wider text-black">Duration (days)</label>
               <input
