@@ -8,12 +8,14 @@ const connectDB = async () => {
 
   const maxRetries = Number(process.env.MONGODB_CONNECT_RETRIES || 10);
   const retryDelayMs = Number(process.env.MONGODB_CONNECT_RETRY_DELAY_MS || 3000);
+  const ipFamily = Number(process.env.MONGODB_IP_FAMILY || 4);
 
   let lastError;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       const conn = await mongoose.connect(uri, {
         serverSelectionTimeoutMS: 10000,
+        family: ipFamily,
       });
 
       console.log(`✅ MongoDB connected: ${conn.connection.host}`);
