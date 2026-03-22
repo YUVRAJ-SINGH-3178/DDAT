@@ -1,16 +1,59 @@
-# React + Vite
+# DDAT Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + Vite frontend for DDAT.
 
-Currently, two official plugins are available:
+## Local Development
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+1. Install dependencies:
 
-## React Compiler
+```bash
+npm install
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+2. Configure environment:
 
-## Expanding the ESLint configuration
+```bash
+cp .env.example .env
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+3. For local backend keep:
+
+```env
+VITE_API_BASE=/api
+VITE_CONTRACT_ADDRESS=0xYourDeployedContractAddress
+```
+
+4. Start dev server:
+
+```bash
+npm run dev
+```
+
+The Vite proxy in `vite.config.js` forwards `/api` to `http://localhost:5000`.
+
+## Hosted Deployment (Expo Demo)
+
+Set these environment variables in your frontend host (Vercel/Netlify):
+
+```env
+VITE_API_BASE=https://your-backend-domain/api
+VITE_CONTRACT_ADDRESS=0xYourDeployedContractAddress
+```
+
+Build command:
+
+```bash
+npm run build
+```
+
+Output directory:
+
+```text
+dist
+```
+
+## Notes
+
+- `VITE_API_BASE` must point to your deployed backend URL in hosted environments.
+- `VITE_CONTRACT_ADDRESS` must match the contract address configured in backend env.
+- Wallet network must match the deployed contract network (currently Sepolia).

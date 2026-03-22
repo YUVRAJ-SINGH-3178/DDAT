@@ -98,6 +98,9 @@ Fill in `.env`:
 PORT=5000
 MONGODB_URI=mongodb://localhost:27017/ddat
 VOTE_THRESHOLD=3
+CORS_ORIGINS=http://localhost:5173
+MONGODB_CONNECT_RETRIES=10
+MONGODB_CONNECT_RETRY_DELAY_MS=3000
 SEPOLIA_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com
 PRIVATE_KEY=your_backend_relayer_private_key
 CONTRACT_ADDRESS=deployed_contract_address
@@ -113,12 +116,13 @@ npm run dev
 ```bash
 cd ddat-frontend
 npm install
+cp .env.example .env
 ```
 
-Update `src/config.js` with your contract address:
-```javascript
-export const CONTRACT_ADDRESS = "your_deployed_contract_address";
-export const API_BASE = "/api";
+Fill in `.env`:
+```env
+VITE_API_BASE=/api
+VITE_CONTRACT_ADDRESS=your_deployed_contract_address
 ```
 
 Start:
@@ -127,6 +131,25 @@ npm run dev
 ```
 
 Open `http://localhost:5173` and connect MetaMask.
+
+## Demo Hosting (Expo-Ready)
+
+Use this setup for a quick public demo:
+
+1. Backend (Render/Railway)
+       - Root: `ddat-backend`
+       - Start command: `npm start`
+       - Set backend `.env` values from above, including `CORS_ORIGINS`
+
+2. Frontend (Vercel/Netlify)
+       - Root: `ddat-frontend`
+       - Build command: `npm run build`
+       - Output directory: `dist`
+       - Set:
+         - `VITE_API_BASE=https://your-backend-domain/api`
+         - `VITE_CONTRACT_ADDRESS=your_deployed_contract_address`
+
+3. Ensure your deployed backend `CORS_ORIGINS` includes the deployed frontend domain.
 
 ## API Endpoints
 

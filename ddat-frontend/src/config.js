@@ -1,5 +1,7 @@
-// DDATracker contract config — update CONTRACT_ADDRESS after deploying
-export const CONTRACT_ADDRESS = "0xFeDfe7b020058B28bB9b057B0525A08B8B483Fcd";
+// DDATracker contract config
+// For hosted environments set VITE_CONTRACT_ADDRESS and VITE_API_BASE.
+export const CONTRACT_ADDRESS =
+  import.meta.env.VITE_CONTRACT_ADDRESS || "0xFeDfe7b020058B28bB9b057B0525A08B8B483Fcd";
 
 export const DDA_TRACKER_ABI = [
   {
@@ -92,4 +94,4 @@ export const DDA_TRACKER_ABI = [
   },
 ];
 
-export const API_BASE = "/api";
+export const API_BASE = import.meta.env.VITE_API_BASE || "/api";
