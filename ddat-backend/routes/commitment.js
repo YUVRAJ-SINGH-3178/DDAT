@@ -91,10 +91,24 @@ router.get("/:walletAddress", async (req, res) => {
       walletAddress: walletAddress.toLowerCase(),
     }).sort({ createdAt: -1 });
 
+    // Build a stable per-user display index (starts at 0).
+    // Index is based on oldest -> newest creation order.
+    const oldestFirst = [...commitments].sort(
+      (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
+    );
+    const localIndexById = new Map(
+      oldestFirst.map((commitment, idx) => [String(commitment._id), idx])
+    );
+
+    const commitmentsWithLocalId = commitments.map((commitment) => ({
+      ...commitment.toObject(),
+      localCommitmentId: localIndexById.get(String(commitment._id)),
+    }));
+
     res.json({
       success: true,
-      count: commitments.length,
-      data: commitments,
+      count: commitmentsWithLocalId.length,
+      data: commitmentsWithLocalId,
     });
   } catch (error) {
     console.error("Error fetching commitments:", error.message);

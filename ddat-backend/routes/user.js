@@ -18,8 +18,10 @@ router.get("/:wallet/activity", async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid wallet address" });
     }
 
+    const normalizedWallet = wallet.toLowerCase();
+
     // Find all commitments by this wallet
-    const commitments = await Commitment.find({ walletAddress: wallet }).sort({ createdAt: -1 });
+    const commitments = await Commitment.find({ walletAddress: normalizedWallet }).sort({ createdAt: -1 });
     const commitmentIds = commitments.map(c => c._id);
 
     // Build activity array
@@ -80,18 +82,20 @@ router.delete("/:wallet", async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid wallet address" });
     }
 
+    const normalizedWallet = wallet.toLowerCase();
+
     // Find and delete all commitments by this user
-    const commitments = await Commitment.find({ walletAddress: wallet });
+    const commitments = await Commitment.find({ walletAddress: normalizedWallet });
     const commitmentIds = commitments.map(c => c._id);
 
     // Delete all proofs for these commitments
     await Proof.deleteMany({ commitmentId: { $in: commitmentIds } });
 
     // Delete all commitments
-    await Commitment.deleteMany({ walletAddress: wallet });
+    await Commitment.deleteMany({ walletAddress: normalizedWallet });
 
     // Delete user record if exists
-    await User.deleteOne({ walletAddress: wallet });
+    await User.deleteOne({ walletAddress: normalizedWallet });
 
     res.json({ success: true, message: "Account and all data deleted successfully" });
   } catch (err) {

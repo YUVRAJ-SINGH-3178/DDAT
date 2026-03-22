@@ -164,6 +164,25 @@ export default function AppLayout({ children, wallet, setWallet }) {
 
         {/* Right: Wallet CTA */}
         <div className="flex items-center gap-2 sm:gap-3">
+          <a
+            href="https://github.com/YUVRAJ-SINGH-3178"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-10 h-10 border-2 border-black bg-white flex items-center justify-center rounded-md hover:bg-black hover:text-white transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] translate-push text-black"
+            title="Open GitHub Profile"
+            aria-label="Open GitHub Profile"
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path d="M12 0.5C5.65 0.5 0.5 5.65 0.5 12C0.5 17.08 3.78 21.39 8.34 22.91C8.94 23.02 9.16 22.65 9.16 22.33C9.16 22.04 9.15 21.28 9.14 20.28C5.8 21.01 5.1 18.67 5.1 18.67C4.55 17.29 3.77 16.92 3.77 16.92C2.68 16.18 3.85 16.19 3.85 16.19C5.05 16.27 5.68 17.42 5.68 17.42C6.75 19.23 8.48 18.71 9.16 18.41C9.27 17.64 9.58 17.12 9.92 16.82C7.26 16.52 4.47 15.48 4.47 10.84C4.47 9.52 4.94 8.45 5.71 7.61C5.59 7.31 5.17 6.08 5.83 4.41C5.83 4.41 6.84 4.09 9.13 5.61C10.09 5.34 11.12 5.2 12.15 5.19C13.18 5.2 14.21 5.34 15.17 5.61C17.46 4.09 18.47 4.41 18.47 4.41C19.13 6.08 18.71 7.31 18.59 7.61C19.36 8.45 19.83 9.52 19.83 10.84C19.83 15.49 17.03 16.52 14.36 16.81C14.79 17.19 15.18 17.95 15.18 19.12C15.18 20.8 15.16 22.15 15.16 22.33C15.16 22.65 15.38 23.03 15.99 22.91C20.54 21.39 23.82 17.08 23.82 12C23.82 5.65 18.67 0.5 12.32 0.5H12Z" />
+            </svg>
+          </a>
+
           {wallet ? (
             <div className="flex items-center gap-2">
               <div className="hidden sm:flex items-center gap-2 px-4 py-2 border-2 border-black bg-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] rounded-md font-bold text-sm text-black">

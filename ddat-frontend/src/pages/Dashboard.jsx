@@ -45,8 +45,10 @@ export default function Dashboard({ wallet, setWallet }) {
 
     let isMounted = true;
 
-    const loadDashboard = async () => {
-      setLoading(true);
+    const loadDashboard = async ({ silent = false } = {}) => {
+      if (!silent) {
+        setLoading(true);
+      }
 
       try {
         const response = await fetch(`${API_BASE}/commitments/${wallet}`);
@@ -61,7 +63,7 @@ export default function Dashboard({ wallet, setWallet }) {
       } catch (err) {
         console.error(err);
       } finally {
-        if (isMounted) {
+        if (isMounted && !silent) {
           setLoading(false);
         }
       }
@@ -83,12 +85,12 @@ export default function Dashboard({ wallet, setWallet }) {
     loadDashboard();
 
     const handleFocus = () => {
-      loadDashboard();
+      loadDashboard({ silent: true });
     };
 
     // Auto-refresh dashboard so recent positions and statuses stay current.
     window.addEventListener("focus", handleFocus);
-    const refreshTimer = setInterval(loadDashboard, 15000);
+    const refreshTimer = setInterval(() => loadDashboard({ silent: true }), 30000);
 
     return () => {
       isMounted = false;
@@ -331,7 +333,11 @@ export default function Dashboard({ wallet, setWallet }) {
               <div className="flex items-center justify-between mb-6">
                 <span className={`tag ${s.cls}`}>{s.label}</span>
                 <span className="text-sm font-bold bg-[#f4f4f5] border-2 border-black px-3 py-1 rounded-md">
-                  {c.contractCommitmentId != null ? `CID:#${c.contractCommitmentId}` : "CID: PENDING"}
+                  {c.localCommitmentId != null
+                    ? `TASK:#${c.localCommitmentId}`
+                    : c.contractCommitmentId != null
+                      ? `CID:#${c.contractCommitmentId}`
+                      : "ID: PENDING"}
                 </span>
               </div>
 
@@ -343,6 +349,9 @@ export default function Dashboard({ wallet, setWallet }) {
               {/* Bottom */}
               <div className="flex items-start sm:items-end justify-between pt-4 border-t-2 border-black/10 gap-3">
                 <div>
+                  <p className="text-xs font-bold uppercase text-black/50 mb-1 tracking-wider">
+                    {c.contractCommitmentId != null ? `On-chain CID #${c.contractCommitmentId}` : "On-chain CID pending"}
+                  </p>
                   <p className="text-xs font-bold uppercase text-black/50 mb-1 tracking-wider">Duration</p>
                   <p className="text-lg font-bold">{c.durationDays} DAYS</p>
                 </div>
