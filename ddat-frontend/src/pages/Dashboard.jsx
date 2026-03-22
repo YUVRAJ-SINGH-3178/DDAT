@@ -52,7 +52,11 @@ export default function Dashboard({ wallet, setWallet }) {
         const response = await fetch(`${API_BASE}/commitments/${wallet}`);
         const payload = await response.json();
         if (isMounted && payload.success) {
-          setData(payload.data);
+          // Keep a stable newest-first order even if backend sort changes.
+          const sorted = [...(payload.data || [])].sort(
+            (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+          );
+          setData(sorted);
         }
       } catch (err) {
         console.error(err);
@@ -78,8 +82,18 @@ export default function Dashboard({ wallet, setWallet }) {
 
     loadDashboard();
 
+    const handleFocus = () => {
+      loadDashboard();
+    };
+
+    // Auto-refresh dashboard so recent positions and statuses stay current.
+    window.addEventListener("focus", handleFocus);
+    const refreshTimer = setInterval(loadDashboard, 15000);
+
     return () => {
       isMounted = false;
+      window.removeEventListener("focus", handleFocus);
+      clearInterval(refreshTimer);
     };
   }, [wallet]);
 
@@ -309,7 +323,7 @@ export default function Dashboard({ wallet, setWallet }) {
 
       {/* ─── Position cards ─────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 stagger">
-        {(showHistory ? data : data.slice(-4)).map(c => {
+        {(showHistory ? data : data.slice(0, 4)).map(c => {
           const s = STATUS[c.status] || STATUS.created;
           return (
             <div key={c._id} className="neo-card p-6 flex flex-col justify-between anim-in hover:-translate-y-1 transition-transform">

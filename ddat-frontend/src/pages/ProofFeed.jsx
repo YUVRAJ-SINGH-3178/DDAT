@@ -4,17 +4,29 @@ import { API_BASE } from "../config";
 export default function ProofFeed({ wallet }) {
   const [proofs, setProofs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [submittingVoteFor, setSubmittingVoteFor] = useState("");
   const [voteMessage, setVoteMessage] = useState("");
   const [voteMessageType, setVoteMessageType] = useState("info");
 
+  const loadFeed = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/proofs/feed`);
+      const data = await res.json();
+      if (data.success) {
+        setProofs(data.data || []);
+      } else {
+        throw new Error(data.error || "Failed to load feed");
+      }
+    } catch (err) {
+      setVoteMessageType("error");
+      setVoteMessage(err.message || "Could not load voting feed.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    fetch(`${API_BASE}/proofs/feed`)
-      .then(r => r.json())
-      .then(d => {
-        if (d.success) setProofs(d.data);
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false));
+    loadFeed();
   }, []);
 
   const handleVote = async (proofId, approve) => {
@@ -23,7 +35,9 @@ export default function ProofFeed({ wallet }) {
       setVoteMessage("Connect wallet to vote.");
       return;
     }
+    if (submittingVoteFor) return;
 
+    setSubmittingVoteFor(proofId);
     setVoteMessage("");
     try {
       const res = await fetch(`${API_BASE}/vote/${proofId}`, {
@@ -34,19 +48,23 @@ export default function ProofFeed({ wallet }) {
       const data = await res.json();
       if (!data.success) throw new Error(data.error);
 
-      // Optimistic update
-      setProofs(prev => prev.map(p => {
-        if (p._id === proofId) {
-          const voteResult = data.data;
+      const voteResult = data.data;
+      setProofs(prev => {
+        if (voteResult?.thresholdReached) {
+          // Once threshold is hit, this proof is no longer voteable.
+          return prev.filter((p) => p._id !== proofId);
+        }
+
+        return prev.map((p) => {
+          if (p._id !== proofId) return p;
           return {
             ...p,
             voteYes: voteResult?.voteYes ?? p.voteYes + (approve ? 1 : 0),
             voteNo: voteResult?.voteNo ?? p.voteNo + (!approve ? 1 : 0),
             votedBy: voteResult?.votedBy ?? [...(p.votedBy || []), wallet.toLowerCase()],
           };
-        }
-        return p;
-      }));
+        });
+      });
 
       setVoteMessageType("success");
       setVoteMessage(
@@ -54,9 +72,16 @@ export default function ProofFeed({ wallet }) {
           ? `Vote recorded. Day ${data.data?.currentDay} resolved as ${data.data?.proofStatus}. Progress ${data.data?.acceptedProofCount}/${data.data?.requiredProofCount}.`
           : "Vote recorded. Waiting for more voters to reach threshold."
       );
+
+      if (data.data?.thresholdReached) {
+        // Re-sync to reflect latest pending queue and vote totals from server.
+        await loadFeed();
+      }
     } catch (err) {
       setVoteMessageType("error");
       setVoteMessage(err.message || "Vote failed");
+    } finally {
+      setSubmittingVoteFor("");
     }
   };
 
@@ -106,6 +131,7 @@ export default function ProofFeed({ wallet }) {
           const ratio = total === 0 ? 0 : ((p.voteYes || 0) / total) * 100;
           const userVoted = p.votedBy?.includes(wallet?.toLowerCase());
           const isOwner = p.commitmentId?.walletAddress?.toLowerCase() === wallet?.toLowerCase();
+          const isSubmittingThisVote = submittingVoteFor === p._id;
 
           return (
             <div key={p._id} className="bg-white border-2 border-black rounded-2xl shadow-hard-lg overflow-hidden anim-in">
@@ -169,15 +195,17 @@ export default function ProofFeed({ wallet }) {
                       <div className="grid grid-cols-2 gap-4">
                         <button 
                           onClick={() => handleVote(p._id, true)}
+                          disabled={isSubmittingThisVote}
                           className="neo-btn justify-center bg-[var(--color-sage)] text-black py-4 translate-push"
                         >
-                          ACCEPT
+                          {isSubmittingThisVote ? "VOTING..." : "ACCEPT"}
                         </button>
                         <button 
                           onClick={() => handleVote(p._id, false)}
+                          disabled={isSubmittingThisVote}
                           className="neo-btn justify-center bg-[#ff5f57] text-white py-4 translate-push"
                         >
-                          REJECT
+                          {isSubmittingThisVote ? "VOTING..." : "REJECT"}
                         </button>
                       </div>
                     )}

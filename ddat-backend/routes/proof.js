@@ -145,7 +145,7 @@ router.get("/feed", async (req, res) => {
       commitmentId: { $in: activeCommitmentIds },
       $or: [{ status: "pending" }, { status: { $exists: false } }, { status: null }],
     })
-      .populate("commitmentId", "walletAddress goalText durationDays stakeAmount status")
+      .populate("commitmentId", "walletAddress goalText durationDays stakeAmount status contractCommitmentId")
       .sort({ createdAt: -1 });
 
     res.json({
