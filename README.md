@@ -1,19 +1,23 @@
-# DDAT — Decentralized Daily Accountability Tracker
+# DDAT - Decentralized Daily Accountability Tracker
 
 A full-stack Web3 accountability platform where users stake real ETH against personal goals. Complete your commitment and get it back. Fail, and it's gone forever — enforced by smart contract and community consensus.
 
-## 🌟 The Neo-Brutalist Interface
+## Interface Style
 
 DDAT features a strict **Neo-Brutalist** visual identity:
 - **Typography:** High-impact `Cabinet Grotesk` headings paired with clean `Satoshi` body text.
 - **Palette:** High-contrast Charcoal (`#171e19`), vibrant Yellow (`#ffe17c`), and muted Sage (`#b7c6c2`).
 - **Mechanics:** 2px thick black borders on all interactive elements, paired with 0px blur hard shadows. Buttons feature a mechanical "push" translation on hover.
 
-## 🚀 Recent Updates
+## Recent Improvements
 
-- **Detailed Transaction States:** Real-time UI feedback for blockchain interactions, including "Waiting for Signature", "Mining On-Chain" (with direct Sepolia Etherscan links), and state recovery features if backend synchronization fails.
-- **Interactive Learn More Modal:** A custom `<dialog>`-style portal overlay explaining the app's workflow seamlessly from the landing page.
-- **Persistent Sessions:** True "Wallet Disconnect" functionality utilizing local storage to prevent unwanted auto-reconnections on page refresh.
+- **Reliable vote feed behavior:** Vote buttons lock while a request is in-flight and resolved proofs are removed as soon as threshold settlement completes.
+- **Correct dashboard recency:** Recent positions now consistently show newest items first.
+- **Per-account task numbering:** Dashboard cards show account-local IDs (`TASK:#0`, `TASK:#1`, ...) while still exposing on-chain CIDs for traceability.
+- **Smoother tab refocus UX:** Dashboard refreshes silently in the background on focus/interval to avoid visible loading flicker.
+- **Backend connection hardening:** MongoDB startup now retries with controlled delays and logs disconnect/reconnect lifecycle events.
+- **Wallet case normalization:** User activity and account cleanup routes normalize wallet addresses to avoid false "missing data" scenarios.
+- **Header profile shortcut:** Top-right header includes a direct GitHub profile link.
 
 ## How It Works
 
@@ -58,7 +62,7 @@ DDAT/
 - Node.js v18+
 - MongoDB (local or Atlas)
 - MetaMask browser extension
-- Sepolia testnet ETH ([faucet](https://www.alchemy.com/faucets/ethereum-sepolia))
+- Sepolia testnet ETH from a faucet ([Alchemy faucet](https://www.alchemy.com/faucets/ethereum-sepolia))
 
 ### 1. Deploy the Smart Contract
 
@@ -134,6 +138,12 @@ Open `http://localhost:5173` and connect MetaMask.
 | `GET` | `/api/proofs/feed` | Get pending proofs for voting | 100/15min |
 | `POST` | `/api/vote/:proofId` | Vote on a proof | 30/15min |
 | `GET` | `/api/health` | Server health check | 100/15min |
+
+## ID and Settlement Notes
+
+- On-chain `CID` is a global counter for the deployed contract and is not wallet-specific.
+- Dashboard `TASK:#` is wallet-specific and starts at `0` for each account.
+- Stake settlement is not time-based alone: stake is returned only after final successful consensus settlement and is forfeited on failed settlement.
 
 ## Smart Contract
 
