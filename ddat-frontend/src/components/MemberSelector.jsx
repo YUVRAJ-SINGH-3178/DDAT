@@ -1,15 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { API_BASE } from "../config";
-
-async function safeJson(response) {
-  const text = await response.text();
-  if (!text) return null;
-  try {
-    return JSON.parse(text);
-  } catch {
-    return null;
-  }
-}
+import { apiRequest } from "../lib/apiClient";
 
 export default function MemberSelector({ labKey, selectedWallet, onWalletChange, requesterWallet = "", includeAllMembers = false, disabled = false }) {
   const [members, setMembers] = useState([]);
@@ -35,13 +25,7 @@ export default function MemberSelector({ labKey, selectedWallet, onWalletChange,
         if (requesterWallet) queryParts.push(`wallet=${encodeURIComponent(requesterWallet)}`);
         if (includeAllMembers) queryParts.push("includeAll=1");
         const query = queryParts.length > 0 ? `?${queryParts.join("&")}` : "";
-        const response = await fetch(`${API_BASE}/user/members/by-lab/${labKey}${query}`);
-        const payload = await safeJson(response);
-        if (!payload) {
-          setMembers([]);
-          setError("Members service returned an invalid response");
-          return;
-        }
+        const payload = await apiRequest(`/user/members/by-lab/${labKey}${query}`);
 
         if (payload.success) {
           setMembers(payload.data || []);
@@ -55,7 +39,7 @@ export default function MemberSelector({ labKey, selectedWallet, onWalletChange,
       } catch (err) {
         console.error("Error loading members:", err);
         setMembers([]);
-        setError("Error loading members");
+        setError(err.message || "Error loading members");
       } finally {
         setLoading(false);
       }

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { API_BASE } from "../config";
+import { apiRequest } from "../lib/apiClient";
 
 function normalizeRole(role) {
   const value = String(role || "").toLowerCase();
@@ -23,14 +23,12 @@ export default function SubmitProof({ wallet }) {
 
     const loadData = async () => {
       try {
-        const profileRes = await fetch(`${API_BASE}/user/${wallet}/profile`);
-        const profilePayload = await profileRes.json();
+        const profilePayload = await apiRequest(`/user/${wallet}/profile`);
         if (profilePayload.success) {
           setProfile(profilePayload.data);
         }
 
-        const taskRes = await fetch(`${API_BASE}/tasks?wallet=${wallet}`);
-        const taskPayload = await taskRes.json();
+        const taskPayload = await apiRequest(`/tasks?wallet=${wallet}`);
         if (taskPayload.success) {
           setTasks(taskPayload.data || []);
         }
@@ -62,9 +60,8 @@ export default function SubmitProof({ wallet }) {
     setStatus({ type: "", message: "" });
 
     try {
-      const res = await fetch(`${API_BASE}/tasks/${selectedTask}/submit`, {
+      await apiRequest(`/tasks/${selectedTask}/submit`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           walletAddress: wallet,
           submissionNote,
@@ -72,15 +69,11 @@ export default function SubmitProof({ wallet }) {
         }),
       });
 
-      const payload = await res.json();
-      if (!payload.success) throw new Error(payload.error || "Could not submit work");
-
       setStatus({ type: "success", message: "Work submitted for enterprise review." });
       setSubmissionNote("");
       setEvidenceUrl("");
 
-      const taskRes = await fetch(`${API_BASE}/tasks?wallet=${wallet}`);
-      const taskPayload = await taskRes.json();
+      const taskPayload = await apiRequest(`/tasks?wallet=${wallet}`);
       if (taskPayload.success) setTasks(taskPayload.data || []);
     } catch (err) {
       setStatus({ type: "error", message: err.message || "Submission failed." });

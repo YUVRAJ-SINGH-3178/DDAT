@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { API_BASE } from "../config";
+import { apiRequest } from "../lib/apiClient";
 
 export default function AdminRoleRequests({ wallet, profile }) {
   const [requests, setRequests] = useState([]);
@@ -15,16 +15,13 @@ export default function AdminRoleRequests({ wallet, profile }) {
     const loadRequests = async () => {
       setLoading(true);
       try {
-        const response = await fetch(`${API_BASE}/user/role-requests/pending?executiveWallet=${encodeURIComponent(wallet)}`);
-        const payload = await response.json();
-        if (payload.success) {
-          setRequests(payload.data || []);
-        } else {
-          setFeedback({ type: "error", message: payload.message || "Failed to load role requests" });
-        }
+        const payload = await apiRequest(
+          `/user/role-requests/pending?executiveWallet=${encodeURIComponent(wallet)}`
+        );
+        setRequests(payload.data || []);
       } catch (err) {
         console.error("Error loading role requests:", err);
-        setFeedback({ type: "error", message: "Failed to load role requests" });
+        setFeedback({ type: "error", message: err.message || "Failed to load role requests" });
       } finally {
         setLoading(false);
       }
@@ -36,16 +33,13 @@ export default function AdminRoleRequests({ wallet, profile }) {
   const handleApprove = async (userWallet, approve) => {
     setApproving(userWallet);
     try {
-      const response = await fetch(`${API_BASE}/user/${userWallet}/approve-role`, {
+      await apiRequest(`/user/${userWallet}/approve-role`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           executiveWallet: wallet,
           approve,
         }),
       });
-      const payload = await response.json();
-      if (!payload.success) throw new Error(payload.message || "Failed to process request");
 
       setRequests((prev) => prev.filter((r) => r.walletAddress !== userWallet));
       setFeedback({

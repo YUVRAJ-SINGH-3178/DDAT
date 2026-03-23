@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { API_BASE } from "../config";
+import { apiRequest } from "../lib/apiClient";
 import MemberSelector from "../components/MemberSelector";
 
 const FALLBACK_LABS = [
@@ -12,16 +12,6 @@ const FALLBACK_LABS = [
   { key: "agastya", name: "Agastya Lab", focus: "Robotics, IoT and Embedded Systems" },
   { key: "navya-vigyan", name: "Navya Vigyan Lab", focus: "Interdisciplinary and Experimental Technology" },
 ];
-
-async function safeJson(response) {
-  const text = await response.text();
-  if (!text) return null;
-  try {
-    return JSON.parse(text);
-  } catch {
-    return null;
-  }
-}
 
 function normalizeRole(role) {
   const value = String(role || "").toLowerCase();
@@ -49,13 +39,9 @@ export default function CreateCommitment({ wallet }) {
     if (!wallet) return;
     const loadMeta = async () => {
       try {
-        const [labsRes, profileRes] = await Promise.all([
-          fetch(`${API_BASE}/tasks/labs/list`),
-          fetch(`${API_BASE}/user/${wallet}/profile`),
-        ]);
         const [labsPayload, profilePayload] = await Promise.all([
-          safeJson(labsRes),
-          safeJson(profileRes),
+          apiRequest("/tasks/labs/list"),
+          apiRequest(`/user/${wallet}/profile`),
         ]);
 
         if (labsPayload?.success) {
@@ -135,9 +121,8 @@ export default function CreateCommitment({ wallet }) {
     setStatus({ type: "", message: "" });
 
     try {
-      const response = await fetch(`${API_BASE}/tasks`, {
+      await apiRequest("/tasks", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title,
           description,
@@ -150,9 +135,6 @@ export default function CreateCommitment({ wallet }) {
           endDate,
         }),
       });
-
-      const payload = await response.json();
-      if (!payload.success) throw new Error(payload.error || "Could not create task");
 
       setStatus({ type: "success", message: "Task created successfully." });
       setTimeout(() => navigate("/"), 1200);

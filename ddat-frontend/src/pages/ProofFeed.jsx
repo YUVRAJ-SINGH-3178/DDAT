@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { API_BASE } from "../config";
+import { apiRequest } from "../lib/apiClient";
 
 function normalizeRole(role) {
   const value = String(role || "").toLowerCase();
@@ -19,17 +19,15 @@ export default function ProofFeed({ wallet }) {
 
   const loadQueue = async (walletAddress) => {
     try {
-      await fetch(`${API_BASE}/tasks/finalize-in-review`, {
+      await apiRequest("/tasks/finalize-in-review", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ walletAddress }),
       }).catch(() => {});
 
-      const [profileRes, labsRes] = await Promise.all([
-        fetch(`${API_BASE}/user/${walletAddress}/profile`),
-        fetch(`${API_BASE}/tasks/labs/list`),
+      const [profilePayload, labsPayload] = await Promise.all([
+        apiRequest(`/user/${walletAddress}/profile`),
+        apiRequest("/tasks/labs/list"),
       ]);
-      const [profilePayload, labsPayload] = await Promise.all([profileRes.json(), labsRes.json()]);
 
       if (profilePayload.success) setProfile(profilePayload.data);
       if (labsPayload.success) setLabs(labsPayload.data || []);
@@ -39,12 +37,11 @@ export default function ProofFeed({ wallet }) {
         ? `?organization=${encodeURIComponent(organization)}&status=in_review`
         : "?status=in_review";
 
-      const queueRes = await fetch(`${API_BASE}/tasks${query}`);
-      const queuePayload = await queueRes.json();
+      const queuePayload = await apiRequest(`/tasks${query}`);
       if (queuePayload.success) setTasks(queuePayload.data || []);
     } catch (err) {
       console.error(err);
-      setMessage({ type: "error", text: "Could not load vote queue." });
+      setMessage({ type: "error", text: err.message || "Could not load vote queue." });
     } finally {
       setLoading(false);
     }
@@ -83,14 +80,10 @@ export default function ProofFeed({ wallet }) {
     setMessage({ type: "", text: "" });
 
     try {
-      const response = await fetch(`${API_BASE}/tasks/${taskId}/vote`, {
+      const payload = await apiRequest(`/tasks/${taskId}/vote`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ walletAddress: wallet, vote, voterRole: normalizedRole }),
       });
-      const payload = await response.json();
-
-      if (!payload.success) throw new Error(payload.error || "Vote failed");
 
       const verdict = payload.data.thresholdReached
         ? payload.data.approved

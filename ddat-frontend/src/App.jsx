@@ -12,21 +12,27 @@ function App() {
   const [wallet, setWallet] = useState(null);
   const [profile, setProfile] = useState(null);
 
-  useEffect(() => {
-    if (!wallet) {
+  const setWalletState = (nextWallet) => {
+    setWallet(nextWallet);
+    if (!nextWallet) {
       setProfile(null);
       return;
     }
 
-    const cached = localStorage.getItem(`profile:${wallet.toLowerCase()}`);
-    if (!cached) return;
+    const cacheKey = `profile:${String(nextWallet).toLowerCase()}`;
+    const cached = localStorage.getItem(cacheKey);
+    if (!cached) {
+      setProfile(null);
+      return;
+    }
 
     try {
       setProfile(JSON.parse(cached));
     } catch {
-      localStorage.removeItem(`profile:${wallet.toLowerCase()}`);
+      localStorage.removeItem(cacheKey);
+      setProfile(null);
     }
-  }, [wallet]);
+  };
 
   useEffect(() => {
     if (!wallet || !profile) return;
@@ -35,13 +41,13 @@ function App() {
 
   return (
     <BrowserRouter>
-      <AppLayout wallet={wallet} setWallet={setWallet} profile={profile} setProfile={setProfile}>
+      <AppLayout wallet={wallet} setWallet={setWalletState} profile={profile} setProfile={setProfile}>
         <Routes>
-          <Route path="/" element={<Dashboard wallet={wallet} setWallet={setWallet} />} />
+          <Route path="/" element={<Dashboard wallet={wallet} setWallet={setWalletState} />} />
           <Route path="/create" element={<CreateCommitment wallet={wallet} />} />
           <Route path="/submit" element={<SubmitProof wallet={wallet} />} />
           <Route path="/feed" element={<ProofFeed wallet={wallet} />} />
-          <Route path="/settings" element={<Settings wallet={wallet} setWallet={setWallet} setProfile={setProfile} />} />
+          <Route path="/settings" element={<Settings wallet={wallet} setWallet={setWalletState} setProfile={setProfile} />} />
           <Route path="/admin/role-requests" element={<AdminRoleRequests wallet={wallet} profile={profile} />} />
         </Routes>
       </AppLayout>

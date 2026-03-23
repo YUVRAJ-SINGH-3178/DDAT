@@ -1,15 +1,5 @@
 import { useEffect, useState } from "react";
-import { API_BASE } from "../config";
-
-async function safeJson(response) {
-  const text = await response.text();
-  if (!text) return null;
-  try {
-    return JSON.parse(text);
-  } catch {
-    return null;
-  }
-}
+import { apiRequest } from "../lib/apiClient";
 
 const FALLBACK_LABS = [
   { key: "bhaskarcharya", name: "Bhaskarcharya Lab", focus: "Web3 and Blockchain" },
@@ -107,14 +97,9 @@ export default function Settings({ wallet, setWallet, setProfile }) {
     const loadSettings = async () => {
       setLoading(true);
       try {
-        const [labsRes, profileRes] = await Promise.all([
-          fetch(`${API_BASE}/tasks/labs/list`),
-          fetch(`${API_BASE}/user/${wallet}/profile`),
-        ]);
-
         const [labsPayload, profilePayload] = await Promise.all([
-          safeJson(labsRes),
-          safeJson(profileRes),
+          apiRequest("/tasks/labs/list"),
+          apiRequest(`/user/${wallet}/profile`),
         ]);
 
         if (!active) return;
@@ -147,9 +132,8 @@ export default function Settings({ wallet, setWallet, setProfile }) {
 
           // Self-heal backend profile if API returned an empty profile but cache has valid data.
           if (shouldUseCached) {
-            fetch(`${API_BASE}/user/${wallet}/profile`, {
+            apiRequest(`/user/${wallet}/profile`, {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 displayName: effectiveProfile.displayName || "",
                 email: effectiveProfile.email || "",
@@ -162,7 +146,9 @@ export default function Settings({ wallet, setWallet, setProfile }) {
         }
       } catch (err) {
         console.error(err);
-        if (active) setFeedback({ type: "error", message: "Could not load settings." });
+        if (active) {
+          setFeedback({ type: "error", message: err.message || "Could not load settings." });
+        }
       } finally {
         if (active) setLoading(false);
       }
@@ -203,14 +189,10 @@ export default function Settings({ wallet, setWallet, setProfile }) {
     setFeedback({ type: "", message: "" });
 
     try {
-      const response = await fetch(`${API_BASE}/user/${wallet}/profile`, {
+      const payload = await apiRequest(`/user/${wallet}/profile`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
-      const payload = await safeJson(response);
-      if (!payload) throw new Error("Profile service returned an invalid response");
-      if (!payload.success) throw new Error(payload.message || "Failed to save profile");
 
       if (payload.data) {
         if (profileCacheKey) localStorage.setItem(profileCacheKey, JSON.stringify(payload.data));
@@ -229,8 +211,7 @@ export default function Settings({ wallet, setWallet, setProfile }) {
       }
       
       // Reload profile to get updated requestedRole info
-      const profileRes = await fetch(`${API_BASE}/user/${wallet}/profile`);
-      const profileData = await safeJson(profileRes);
+      const profileData = await apiRequest(`/user/${wallet}/profile`);
       if (profileData?.success) {
         setLocalProfile(profileData.data);
         if (setProfile) setProfile(profileData.data);

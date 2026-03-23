@@ -1,16 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { API_BASE } from "../config";
-
-async function safeJson(response) {
-  const text = await response.text();
-  if (!text) return null;
-  try {
-    return JSON.parse(text);
-  } catch {
-    return null;
-  }
-}
+import { apiRequest } from "../lib/apiClient";
 
 function normalizeRole(role) {
   const value = String(role || "").toLowerCase();
@@ -45,21 +35,15 @@ export default function Dashboard({ wallet }) {
       setLoading(true);
       try {
         if (wallet) {
-          await fetch(`${API_BASE}/tasks/finalize-in-review`, {
+          await apiRequest("/tasks/finalize-in-review", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ walletAddress: wallet }),
           }).catch(() => {});
         }
 
-        const [labsRes, profileRes] = await Promise.all([
-          fetch(`${API_BASE}/tasks/labs/list`),
-          fetch(`${API_BASE}/user/${wallet}/profile`),
-        ]);
-
         const [labsPayload, profilePayload] = await Promise.all([
-          safeJson(labsRes),
-          safeJson(profileRes),
+          apiRequest("/tasks/labs/list"),
+          apiRequest(`/user/${wallet}/profile`),
         ]);
 
         if (!mounted) return;
@@ -75,8 +59,7 @@ export default function Dashboard({ wallet }) {
           ? `?wallet=${wallet}&organization=${encodeURIComponent(organization)}`
           : `?wallet=${wallet}`;
 
-        const taskRes = await fetch(`${API_BASE}/tasks${query}`);
-        const taskPayload = await safeJson(taskRes);
+        const taskPayload = await apiRequest(`/tasks${query}`);
 
         if (!mounted) return;
 
@@ -85,7 +68,9 @@ export default function Dashboard({ wallet }) {
         }
       } catch (err) {
         console.error(err);
-        if (mounted) setNotice("Could not load workspace data. Please refresh after backend is up.");
+        if (mounted) {
+          setNotice(err.message || "Could not load workspace data. Please refresh after backend is up.");
+        }
       } finally {
         if (mounted) setLoading(false);
       }
