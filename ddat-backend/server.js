@@ -93,9 +93,9 @@ const globalLimiter = rateLimit({
   standardHeaders: "draft-7",
   legacyHeaders: false,
   skip: (req) => {
-    if (req.method !== "GET") return false;
-    const path = req.path || "";
-    return path === "/api/health" || path === "/api/tasks/labs/list";
+    // Read-heavy endpoints refresh frequently in the UI; keep limits focused on writes.
+    if (req.method === "GET") return true;
+    return false;
   },
   message: { success: false, error: "Too many requests. Try again later." },
 });
