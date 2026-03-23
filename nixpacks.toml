@@ -1,0 +1,8 @@
+[phases.setup]
+nixPkgs = ["nodejs_20"]
+
+[phases.install]
+cmds = ["npm ci --prefix ddat-backend"]
+
+[start]
+cmd = "npm --prefix ddat-backend start"

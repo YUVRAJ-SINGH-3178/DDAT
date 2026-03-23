@@ -1,11 +1,10 @@
 {
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
-    "builder": "NIXPACKS",
-    "buildCommand": "cd ddat-backend && npm ci"
+    "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "cd ddat-backend && npm start",
+    "startCommand": "npm --prefix ddat-backend start",
     "healthcheckPath": "/api/health",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
