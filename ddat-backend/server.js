@@ -5,6 +5,7 @@ const helmet = require("helmet");
 const morgan = require("morgan");
 const Sentry = require("@sentry/node");
 const { rateLimit } = require("express-rate-limit");
+const mongoose = require("mongoose");
 const connectDB = require("./config/db");
 
 const sentryDsn = process.env.SENTRY_DSN;
@@ -43,6 +44,47 @@ const taskRoutes = require("./routes/task");
 
 // ─── Initialize app ─────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
+const DB_RECONNECT_DELAY_MS = Number(process.env.DB_RECONNECT_DELAY_MS || 5000);
+
+let dbConnectInProgress = false;
+
+function getDatabaseState() {
+  const stateMap = {
+    0: "disconnected",
+    1: "connected",
+    2: "connecting",
+    3: "disconnecting",
+  };
+
+  const readyState = mongoose.connection.readyState;
+  return {
+    readyState,
+    state: stateMap[readyState] || "unknown",
+    connected: readyState === 1,
+  };
+}
+
+async function connectDbWithRetryLoop() {
+  if (dbConnectInProgress || mongoose.connection.readyState === 1) {
+    return;
+  }
+
+  dbConnectInProgress = true;
+  try {
+    await connectDB();
+  } catch (error) {
+    console.error(
+      `⚠️  DB connect failed. Retrying in ${DB_RECONNECT_DELAY_MS}ms: ${error.message}`
+    );
+    setTimeout(() => {
+      connectDbWithRetryLoop().catch((retryError) => {
+        console.error("Unexpected DB retry error:", retryError.message);
+      });
+    }, DB_RECONNECT_DELAY_MS);
+  } finally {
+    dbConnectInProgress = false;
+  }
+}
 
 // ─── Rate limiters ──────────────────────────────────────────────────────────
 const globalLimiter = rateLimit({
@@ -139,11 +181,18 @@ function createApp() {
 
   // ─── Health check ─────────────────────────────────────────────────────────
   app.get("/api/health", (req, res) => {
+    const database = getDatabaseState();
     res.json({
       status: "ok",
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
+      database,
     });
+  });
+
+  // Useful for platform health checks that hit the root path.
+  app.get("/", (req, res) => {
+    res.status(200).send("DDAT backend is running");
   });
 
   // ─── 404 handler ──────────────────────────────────────────────────────────
@@ -176,11 +225,15 @@ function createApp() {
 // ─── Start server ───────────────────────────────────────────────────────────
 const startServer = async () => {
   const app = createApp();
-  await connectDB();
+
   app.listen(PORT, () => {
     console.log(`\n🚀 DDAT Backend running on http://localhost:${PORT}`);
     console.log(`   Health check: http://localhost:${PORT}/api/health\n`);
   });
+
+  // Start DB connection after the port is bound so hosting platforms
+  // can complete startup health checks while DB warms up.
+  await connectDbWithRetryLoop();
 };
 
 if (require.main === module) {
