@@ -1,89 +1,265 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { API_BASE } from "../config";
-import { createPortal } from "react-dom";
 
-const ACTIVITY_TYPES = {
-  commitment_created: { label: "ETH Staked", color: "bg-[var(--color-yellow)]", icon: "💰" },
-  commitment_settled_success: { label: "ETH Returned", color: "bg-[#28c840]", icon: "✓" },
-  commitment_settled_failed: { label: "ETH Forfeited", color: "bg-[#ff5f57]", icon: "✗" },
-};
+async function safeJson(response) {
+  const text = await response.text();
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
 
-export default function Settings({ wallet, setWallet }) {
-  const navigate = useNavigate();
-  const [activity, setActivity] = useState([]);
+const FALLBACK_LABS = [
+  { key: "bhaskarcharya", name: "Bhaskarcharya Lab", focus: "Web3 and Blockchain" },
+  { key: "prajna-kritrima", name: "Prajna Kritrima Lab", focus: "AI/ML, Deep Learning and Generative AI" },
+  { key: "aanu-tattva", name: "Aanu Tattva Lab", focus: "Quantum Computing and Quantum Machine Learning" },
+  { key: "chitra-darshan", name: "Chitra Darshan Lab", focus: "Game Development, AR, VR and Mixed Reality" },
+  { key: "varahamihira", name: "Varahamihira Lab", focus: "Cloud Computing and Cybersecurity" },
+  { key: "agastya", name: "Agastya Lab", focus: "Robotics, IoT and Embedded Systems" },
+  { key: "navya-vigyan", name: "Navya Vigyan Lab", focus: "Interdisciplinary and Experimental Technology" },
+];
+
+function normalizeRole(role) {
+  const value = String(role || "").toLowerCase();
+  if (value === "employee") return "member";
+  if (value === "enterprise_admin") return "executive";
+  if (["member", "affiliate", "executive"].includes(value)) return value;
+  return "member";
+}
+
+function hasMeaningfulProfile(profile) {
+  if (!profile) return false;
+  return Boolean(
+    String(profile.displayName || "").trim() ||
+      String(profile.organization || "").trim() ||
+      String(profile.labKey || "").trim() ||
+      String(profile.email || "").trim()
+  );
+}
+
+export default function Settings({ wallet, setWallet, setProfile }) {
+  const [labs, setLabs] = useState([]);
+  const [form, setForm] = useState({
+    displayName: "",
+    email: "",
+    role: "member",
+    organization: "",
+    labKey: "",
+  });
+  const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [feedback, setFeedback] = useState(null);
-  const [deleteFeedback, setDeleteFeedback] = useState(null);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [deleteConfirmText, setDeleteConfirmText] = useState("");
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [localProfile, setLocalProfile] = useState(null);
+  const [feedback, setFeedback] = useState({ type: "", message: "" });
+
+  const profileCacheKey = wallet ? `profile:${wallet.toLowerCase()}` : "";
+  const settingsCacheKey = wallet ? `settings-form:${wallet.toLowerCase()}` : "";
+  const labsCacheKey = wallet ? `labs:${wallet.toLowerCase()}` : "";
 
   useEffect(() => {
-    if (!wallet) {
-      navigate("/");
-      return;
+    if (!wallet) return;
+
+    let active = true;
+    let cachedProfileObject = null;
+
+    // Load cached settings first to prevent blank forms after refresh.
+    if (settingsCacheKey) {
+      const cachedForm = localStorage.getItem(settingsCacheKey);
+      if (cachedForm) {
+        try {
+          const parsed = JSON.parse(cachedForm);
+          setForm((prev) => ({ ...prev, ...parsed }));
+        } catch {
+          localStorage.removeItem(settingsCacheKey);
+        }
+      }
     }
 
-    const fetchActivity = async () => {
+    if (labsCacheKey) {
+      const cachedLabs = localStorage.getItem(labsCacheKey);
+      if (cachedLabs) {
+        try {
+          const parsed = JSON.parse(cachedLabs);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setLabs(parsed);
+          }
+        } catch {
+          localStorage.removeItem(labsCacheKey);
+        }
+      }
+    }
+
+    if (profileCacheKey) {
+      const cachedProfile = localStorage.getItem(profileCacheKey);
+      if (cachedProfile) {
+        try {
+          const parsed = JSON.parse(cachedProfile);
+          cachedProfileObject = parsed;
+          setLocalProfile(parsed);
+          setProfile?.(parsed);
+        } catch {
+          localStorage.removeItem(profileCacheKey);
+        }
+      }
+    }
+
+    const loadSettings = async () => {
       setLoading(true);
       try {
-        const response = await fetch(`${API_BASE}/user/${wallet}/activity`);
-        const payload = await response.json();
-        if (payload.success) {
-          setActivity(payload.data || []);
+        const [labsRes, profileRes] = await Promise.all([
+          fetch(`${API_BASE}/tasks/labs/list`),
+          fetch(`${API_BASE}/user/${wallet}/profile`),
+        ]);
+
+        const [labsPayload, profilePayload] = await Promise.all([
+          safeJson(labsRes),
+          safeJson(profileRes),
+        ]);
+
+        if (!active) return;
+
+        if (labsPayload?.success) {
+          const nextLabs = labsPayload.data || [];
+          setLabs(nextLabs);
+          if (labsCacheKey) localStorage.setItem(labsCacheKey, JSON.stringify(nextLabs));
+        } else {
+          setLabs((prev) => (prev.length > 0 ? prev : FALLBACK_LABS));
+        }
+
+        if (profilePayload?.success) {
+          const profileData = profilePayload.data || {};
+          const shouldUseCached = !hasMeaningfulProfile(profileData) && hasMeaningfulProfile(cachedProfileObject);
+          const effectiveProfile = shouldUseCached ? cachedProfileObject : profileData;
+
+          setLocalProfile(effectiveProfile);
+          if (setProfile) setProfile(effectiveProfile);
+          const nextForm = {
+            displayName: effectiveProfile.displayName || "",
+            email: effectiveProfile.email || "",
+            role: normalizeRole(effectiveProfile.role),
+            organization: effectiveProfile.organization || "",
+            labKey: effectiveProfile.labKey || labsPayload?.data?.[0]?.key || FALLBACK_LABS[0].key,
+          };
+          setForm(nextForm);
+          if (settingsCacheKey) localStorage.setItem(settingsCacheKey, JSON.stringify(nextForm));
+          if (profileCacheKey) localStorage.setItem(profileCacheKey, JSON.stringify(effectiveProfile));
+
+          // Self-heal backend profile if API returned an empty profile but cache has valid data.
+          if (shouldUseCached) {
+            fetch(`${API_BASE}/user/${wallet}/profile`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                displayName: effectiveProfile.displayName || "",
+                email: effectiveProfile.email || "",
+                role: normalizeRole(effectiveProfile.role),
+                organization: effectiveProfile.organization || "",
+                labKey: effectiveProfile.labKey || "",
+              }),
+            }).catch(() => {});
+          }
         }
       } catch (err) {
-        console.error("Failed to fetch activity:", err);
+        console.error(err);
+        if (active) setFeedback({ type: "error", message: "Could not load settings." });
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     };
 
-    fetchActivity();
-  }, [wallet, navigate]);
+    loadSettings();
 
-  const handleDeleteAccount = async () => {
-    if (deleteConfirmText !== "DELETE ACCOUNT") {
-      setDeleteFeedback({ type: "error", message: "Confirmation text is incorrect." });
+    return () => {
+      active = false;
+    };
+  }, [wallet, setProfile, profileCacheKey, settingsCacheKey, labsCacheKey]);
+
+  const updateField = (field, value) => {
+    setForm((prev) => {
+      const next = { ...prev, [field]: value };
+      if (settingsCacheKey) {
+        localStorage.setItem(settingsCacheKey, JSON.stringify(next));
+      }
+      return next;
+    });
+  };
+
+  const saveProfile = async (e) => {
+    e.preventDefault();
+    if (!wallet) return;
+
+    if (!form.displayName.trim() || !form.organization.trim() || !form.labKey) {
+      setFeedback({ type: "error", message: "Name, organization, and lab are required." });
       return;
     }
 
-    setIsDeleting(true);
-    setDeleteFeedback(null);
-    try {
-      const response = await fetch(`${API_BASE}/user/${wallet}`, {
-        method: "DELETE",
-      });
-      const payload = await response.json();
-
-      if (payload.success) {
-        setDeleteFeedback({
-          type: "success",
-          message: "Account deleted. Redirecting to home...",
-        });
-        // Block silent auto-connect and clear local wallet state.
-        localStorage.setItem("walletDisconnected", "true");
-        localStorage.setItem("walletAutoConnectBlocked", "true");
-        setWallet?.(null);
-        setTimeout(() => {
-          setShowDeleteModal(false);
-          setDeleteConfirmText("");
-          setDeleteFeedback(null);
-          window.location.href = "/";
-        }, 1200);
-      } else {
-        setDeleteFeedback({
-          type: "error",
-          message: "Error deleting account: " + (payload.message || "Unknown error"),
-        });
-      }
-    } catch (err) {
-      console.error("Delete failed:", err);
-      setDeleteFeedback({ type: "error", message: "Error deleting account. Please try again." });
-    } finally {
-      setIsDeleting(false);
+    if (form.email && !form.email.toLowerCase().endsWith("@srmap.edu.in")) {
+      setFeedback({ type: "error", message: "Email must be from @srmap.edu.in domain." });
+      return;
     }
+
+    setSaving(true);
+    setFeedback({ type: "", message: "" });
+
+    try {
+      const response = await fetch(`${API_BASE}/user/${wallet}/profile`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      const payload = await safeJson(response);
+      if (!payload) throw new Error("Profile service returned an invalid response");
+      if (!payload.success) throw new Error(payload.message || "Failed to save profile");
+
+      if (payload.data) {
+        if (profileCacheKey) localStorage.setItem(profileCacheKey, JSON.stringify(payload.data));
+        if (settingsCacheKey) {
+          localStorage.setItem(
+            settingsCacheKey,
+            JSON.stringify({
+              displayName: payload.data.displayName || form.displayName || "",
+              email: payload.data.email || form.email || "",
+              role: normalizeRole(payload.data.role),
+              organization: payload.data.organization || form.organization || "",
+              labKey: payload.data.labKey || form.labKey || "",
+            })
+          );
+        }
+      }
+      
+      // Reload profile to get updated requestedRole info
+      const profileRes = await fetch(`${API_BASE}/user/${wallet}/profile`);
+      const profileData = await safeJson(profileRes);
+      if (profileData?.success) {
+        setLocalProfile(profileData.data);
+        if (setProfile) setProfile(profileData.data);
+        if (profileCacheKey) localStorage.setItem(profileCacheKey, JSON.stringify(profileData.data));
+        if (settingsCacheKey) {
+          localStorage.setItem(
+            settingsCacheKey,
+            JSON.stringify({
+              displayName: profileData.data.displayName || "",
+              email: profileData.data.email || "",
+              role: normalizeRole(profileData.data.role),
+              organization: profileData.data.organization || "",
+              labKey: profileData.data.labKey || form.labKey || "",
+            })
+          );
+        }
+      }
+      
+      setFeedback({ type: "success", message: payload.message || "Profile updated." });
+    } catch (err) {
+      setFeedback({ type: "error", message: err.message || "Failed to save profile." });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const disconnectWallet = () => {
+    localStorage.setItem("walletDisconnected", "true");
+    setWallet?.(null);
   };
 
   if (!wallet) {
@@ -97,203 +273,119 @@ export default function Settings({ wallet, setWallet }) {
   }
 
   return (
-    <div className="anim-in mx-auto w-full max-w-4xl pt-8 px-4 pb-20">
-      {/* ─── Header ───────────────────────────────────────────────── */}
-      <div className="mb-12">
-        <h1 className="text-4xl font-black uppercase tracking-tighter text-white mb-2">Settings</h1>
-        <p className="text-white/60 font-medium">View your ETH transaction history and manage your account</p>
+    <div className="anim-in mx-auto w-full max-w-3xl pt-8 px-4 pb-20">
+      <div className="mb-10">
+        <h1 className="text-4xl font-black uppercase tracking-tighter text-white mb-2">Enterprise Settings</h1>
+        <p className="text-white/60 font-medium">Configure your role, organization and default lab.</p>
       </div>
 
-      {feedback && (
-        <div
-          className={`mb-6 border-2 border-black rounded-xl px-4 py-3 shadow-hard flex items-center justify-between ${
-            feedback.type === "success" ? "bg-[var(--color-sage)] text-black" : "bg-[#ff5f57] text-white"
-          }`}
-        >
-          <p className="font-bold uppercase text-sm tracking-wide">{feedback.message}</p>
-          <button
-            onClick={() => setFeedback(null)}
-            className="ml-4 w-8 h-8 border-2 border-black rounded-md bg-white text-black font-black"
-          >
-            X
-          </button>
-        </div>
-      )}
-
-      {/* ─── Transaction History ────────────────────────────────── */}
-      <div className="bg-white border-2 border-black rounded-2xl p-4 sm:p-8 mb-8 shadow-hard">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-8">
-          <h2 className="text-xl sm:text-2xl font-black uppercase tracking-tight text-black">ETH Transaction History</h2>
-          {activity.length > 0 && (
-            <span className="bg-[var(--color-yellow)] border-2 border-black px-4 py-2 rounded-full font-bold text-sm text-black">
-              {activity.length} transactions
-            </span>
-          )}
-        </div>
-
-        {loading && (
-          <div className="flex items-center gap-3 justify-center py-16">
+      <div className="neo-card p-8">
+        {loading ? (
+          <div className="flex items-center gap-3 justify-center py-14">
             <div className="spinner border-black border-t-black" />
-            <span className="text-black font-bold uppercase text-sm">Loading activity...</span>
+            <span className="text-black font-bold uppercase text-sm">Loading settings...</span>
           </div>
-        )}
-
-        {!loading && activity.length === 0 && (
-          <div className="bg-[#f4f4f5] border-2 border-dashed border-black/30 rounded-xl p-12 text-center">
-            <p className="text-black/60 font-bold uppercase">No ETH transactions yet</p>
-          </div>
-        )}
-
-        {!loading && activity.length > 0 && (
-          <div className="space-y-3 max-h-[600px] overflow-y-auto">
-            {activity.map((event, idx) => {
-              const type = ACTIVITY_TYPES[event.type] || {
-                label: event.type,
-                color: "bg-[var(--color-gray-dark)]",
-                icon: "•",
-              };
-              const date = new Date(event.timestamp);
-              const dateStr = date.toLocaleDateString("en-US", {
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-              });
-              const timeStr = date.toLocaleTimeString("en-US", {
-                hour: "2-digit",
-                minute: "2-digit",
-              });
-
-              return (
-                <div
-                  key={idx}
-                  className="flex flex-col sm:flex-row sm:items-start gap-3 sm:gap-4 p-4 bg-[#f4f4f5] border-2 border-black/10 rounded-lg hover:border-black/30 transition-colors"
-                >
-                  {/* Icon */}
-                  <div
-                    className={`w-12 h-12 rounded-lg border-2 border-black flex items-center justify-center text-lg font-black flex-shrink-0 ${type.color}`}
-                  >
-                    {type.icon}
-                  </div>
-
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-black text-black uppercase text-sm tracking-tight">{type.label}</h3>
-                    {event.details && (
-                      <p className="text-sm text-black/70 font-medium mt-1 break-words line-clamp-2">{event.details}</p>
-                    )}
-                  </div>
-
-                  {/* Date & Time */}
-                  <div className="sm:text-right flex-shrink-0">
-                    <p className="text-xs font-bold text-black/60 uppercase tracking-wider">{dateStr}</p>
-                    <p className="text-xs font-bold text-black/50 uppercase">{timeStr}</p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* ─── Account Actions ──────────────────────────────────────── */}
-      <div className="border-t-4 border-black pt-8">
-        <h2 className="text-2xl font-black uppercase tracking-tight text-white mb-8">Account Actions</h2>
-
-        <div className="bg-[#ff5f57] border-4 border-black rounded-2xl p-8 shadow-hard-lg">
-          <div className="flex items-center gap-4 mb-6">
-            <div className="w-16 h-16 rounded-lg border-2 border-black bg-white flex items-center justify-center text-2xl font-black text-black">
-              ⚠
-            </div>
+        ) : (
+          <form onSubmit={saveProfile} className="space-y-5">
             <div>
-              <h3 className="font-black text-white text-lg uppercase tracking-tight">Delete Account</h3>
-              <p className="text-white/80 font-medium text-sm mt-1">
-                This action is permanent. All your data will be erased.
-              </p>
+              <label className="block text-sm font-bold mb-2 uppercase tracking-wider text-black">Display Name</label>
+              <input
+                type="text"
+                value={form.displayName}
+                onChange={(e) => updateField("displayName", e.target.value)}
+                className="neo-input"
+                placeholder="Aarav Sharma"
+                disabled={saving}
+              />
             </div>
-          </div>
 
-          <button
-            onClick={() => setShowDeleteModal(true)}
-            className="w-full bg-white text-black border-2 border-black font-bold uppercase tracking-wider py-4 px-6 rounded-lg shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:bg-[#ff5f57] hover:text-white transition-colors translate-push"
-          >
-            Delete My Account & Data
-          </button>
-        </div>
-      </div>
+            <div>
+              <label className="block text-sm font-bold mb-2 uppercase tracking-wider text-black">Email</label>
+              <input
+                type="email"
+                value={form.email}
+                onChange={(e) => updateField("email", e.target.value)}
+                className="neo-input"
+                placeholder="your.email@srmap.edu.in"
+                disabled={saving}
+              />
+            </div>
 
-      {/* ─── Delete Confirmation Modal ────────────────────────── */}
-      {showDeleteModal &&
-        createPortal(
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm anim-in m-0 top-0 left-0 w-full h-screen">
-            <div className="neo-card-lg p-5 sm:p-8 max-w-2xl w-full relative">
-              <button
-                onClick={() => {
-                  setShowDeleteModal(false);
-                  setDeleteConfirmText("");
-                  setDeleteFeedback(null);
-                }}
-                className="absolute top-4 right-4 w-10 h-10 bg-white border-2 border-black rounded-full flex items-center justify-center font-black text-xl hover:bg-[#ff5f57] hover:text-white transition-colors shadow-hard"
-              >
-                ✕
-              </button>
+            <div className="grid sm:grid-cols-2 gap-5">
+              <div>
+                <label className="block text-sm font-bold mb-2 uppercase tracking-wider text-black">Role</label>
+                <select value={form.role} onChange={(e) => updateField("role", e.target.value)} className="neo-input" disabled={saving}>
+                  <option value="member">Member</option>
+                  <option value="affiliate">Affiliate</option>
+                  <option value="executive">Executive</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-bold mb-2 uppercase tracking-wider text-black">Organization</label>
+                <input
+                  type="text"
+                  value={form.organization}
+                  onChange={(e) => updateField("organization", e.target.value)}
+                  className="neo-input"
+                  placeholder="Singularity Lab"
+                  disabled={saving}
+                />
+              </div>
+            </div>
 
-              <h2 className="text-3xl font-black uppercase mb-4 tracking-tight pr-12">Delete Account?</h2>
+            <div>
+              <label className="block text-sm font-bold mb-2 uppercase tracking-wider text-black">Primary Lab</label>
+              <select value={form.labKey} onChange={(e) => updateField("labKey", e.target.value)} className="neo-input" disabled={saving}>
+                {labs.map((lab) => (
+                  <option key={lab.key} value={lab.key}>
+                    {lab.name} • {lab.focus}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-              <div className="bg-[#ff5f57] border-2 border-black p-4 rounded-lg mb-6">
-                <p className="text-white font-bold text-sm uppercase">
-                  ⚠ This action cannot be undone. All commitments, proofs, and account data will be permanently
-                  deleted.
+            <div className="text-xs font-bold uppercase text-black/60 bg-[#f4f4f5] border-2 border-black rounded-lg p-3 break-all">
+              Wallet identity: {wallet}
+            </div>
+
+            {localProfile?.requestedRole && (
+              <div className="border-2 border-black rounded-lg p-4 shadow-hard bg-[var(--color-yellow)]">
+                <p className="font-bold uppercase text-sm text-black mb-2">⏳ Role Change Pending Approval</p>
+                <p className="text-xs font-medium text-black/70">
+                  You have requested to change your role from <span className="font-bold uppercase">{localProfile.role}</span> to <span className="font-bold uppercase">{localProfile.requestedRole}</span>
+                </p>
+                <p className="text-xs font-medium text-black/60 mt-2">
+                  Awaiting approval from an executive. This change will be automatically applied once approved.
                 </p>
               </div>
+            )}
 
-              <div className="space-y-4">
-                <label className="block">
-                  <span className="text-black font-bold uppercase text-sm block mb-2">Type to confirm:</span>
-                  <input
-                    type="text"
-                    placeholder="DELETE ACCOUNT"
-                    value={deleteConfirmText}
-                    onChange={(e) => setDeleteConfirmText(e.target.value.toUpperCase())}
-                    className="neo-input w-full border-2 border-black rounded-lg px-4 py-3 font-bold uppercase tracking-widest text-center"
-                  />
-                </label>
-
-                {deleteFeedback && (
-                  <div
-                    className={`border-2 border-black rounded-lg px-4 py-3 shadow-hard ${
-                      deleteFeedback.type === "success"
-                        ? "bg-[var(--color-sage)] text-black"
-                        : "bg-[#ff5f57] text-white"
-                    }`}
-                  >
-                    <p className="font-bold uppercase text-xs tracking-wide">{deleteFeedback.message}</p>
-                  </div>
-                )}
+            {form.role !== normalizeRole(localProfile?.role) && !localProfile?.requestedRole && (
+              <div className="border-2 border-black rounded-lg p-4 shadow-hard bg-[var(--color-cream)]">
+                <p className="font-bold uppercase text-sm text-black mb-2">ℹ️ Role Change Request</p>
+                <p className="text-xs font-medium text-black/70">
+                  When you save, your role change to <span className="font-bold uppercase">{form.role}</span> will be submitted for executive approval.
+                </p>
               </div>
+            )}
 
-              <div className="flex gap-4 mt-8">
-                <button
-                  onClick={() => {
-                    setShowDeleteModal(false);
-                    setDeleteConfirmText("");
-                    setDeleteFeedback(null);
-                  }}
-                  className="neo-btn neo-btn-white flex-1 py-3 translate-push"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleDeleteAccount}
-                  disabled={deleteConfirmText !== "DELETE ACCOUNT" || isDeleting}
-                  className="flex-1 bg-[#ff5f57] text-white border-2 border-black font-black uppercase py-3 px-4 rounded-lg shadow-hard disabled:opacity-50 disabled:cursor-not-allowed hover:enabled:bg-[#ff3a2f] transition-colors translate-push"
-                >
-                  {isDeleting ? "Deleting..." : "Delete Permanently"}
-                </button>
+            {feedback.message && (
+              <div className={`border-2 border-black rounded-lg p-3 shadow-hard ${feedback.type === "error" ? "bg-[#ff5f57] text-white" : "bg-[var(--color-sage)] text-black"}`}>
+                <p className="font-bold uppercase text-xs tracking-wide">{feedback.message}</p>
               </div>
+            )}
+
+            <div className="grid sm:grid-cols-2 gap-4 pt-2">
+              <button type="submit" disabled={saving} className="neo-btn neo-btn-sage justify-center translate-push">
+                {saving ? "Saving..." : "Save Profile"}
+              </button>
+              <button type="button" onClick={disconnectWallet} className="neo-btn bg-[#ff5f57] text-white justify-center translate-push">
+                Disconnect Wallet
+              </button>
             </div>
-          </div>,
-          document.body
+          </form>
         )}
+      </div>
     </div>
   );
 }

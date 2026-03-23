@@ -204,6 +204,7 @@ describe("DDATracker", function () {
 
       // Contract still holds the stake
       expect(await tracker.getContractBalance()).to.equal(stake);
+      expect(await tracker.getForfeitedPoolBalance()).to.equal(stake);
     });
 
     it("Should emit CommitmentVerified event", async function () {
@@ -306,6 +307,47 @@ describe("DDATracker", function () {
           .connect(owner)
           .withdrawForfeitedStakes(owner.address, stake)
       ).to.changeEtherBalance(owner, stake);
+
+      expect(await tracker.getForfeitedPoolBalance()).to.equal(0);
+    });
+
+    it("Should prevent withdrawing more than forfeited pool", async function () {
+      const { tracker, owner, user1 } = await loadFixture(deployFixture);
+      const stake = ethers.parseEther("1.0");
+
+      await tracker
+        .connect(user1)
+        .createCommitment("Goal", 86400, { value: stake });
+      await tracker.connect(user1).submitProof(0);
+      await tracker.connect(owner).verifyAndRelease(0, false);
+
+      await expect(
+        tracker
+          .connect(owner)
+          .withdrawForfeitedStakes(owner.address, ethers.parseEther("1.1"))
+      ).to.be.revertedWith("DDATracker: insufficient forfeited pool balance");
+    });
+
+    it("Should allow tagged withdrawals for custom usage", async function () {
+      const { tracker, owner, user1 } = await loadFixture(deployFixture);
+      const stake = ethers.parseEther("1.0");
+      const rewardAmount = ethers.parseEther("0.25");
+
+      await tracker
+        .connect(user1)
+        .createCommitment("Goal", 86400, { value: stake });
+      await tracker.connect(user1).submitProof(0);
+      await tracker.connect(owner).verifyAndRelease(0, false);
+
+      await expect(
+        tracker
+          .connect(owner)
+          .withdrawForfeitedPoolFunds(owner.address, rewardAmount, "rewards")
+      ).to.changeEtherBalance(owner, rewardAmount);
+
+      expect(await tracker.getForfeitedPoolBalance()).to.equal(
+        stake - rewardAmount
+      );
     });
   });
 });

@@ -92,6 +92,13 @@ const DDA_TRACKER_ABI = [
   },
   {
     inputs: [],
+    name: "getForfeitedPoolBalance",
+    outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [],
     name: "owner",
     outputs: [{ internalType: "address", name: "", type: "address" }],
     stateMutability: "view",
@@ -120,6 +127,17 @@ const DDA_TRACKER_ABI = [
       { internalType: "uint256", name: "_amount", type: "uint256" },
     ],
     name: "withdrawForfeitedStakes",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [
+      { internalType: "address payable", name: "_to", type: "address" },
+      { internalType: "uint256", name: "_amount", type: "uint256" },
+      { internalType: "string", name: "_purpose", type: "string" },
+    ],
+    name: "withdrawForfeitedPoolFunds",
     outputs: [],
     stateMutability: "nonpayable",
     type: "function",
@@ -260,4 +278,62 @@ async function settleCommitment(contractCommitmentId, success) {
   }
 }
 
-module.exports = { lockStake, settleCommitment };
+// ─── forfeited pool helpers ────────────────────────────────────────────────
+/**
+ * Read current forfeited pool balance from contract.
+ * @returns {object} - { balanceWei, balanceEth }
+ */
+async function getForfeitedPoolBalance() {
+  try {
+    const ddaContract = getContract();
+    const balanceWei = await ddaContract.getForfeitedPoolBalance();
+
+    return {
+      balanceWei: balanceWei.toString(),
+      balanceEth: ethers.formatEther(balanceWei),
+    };
+  } catch (error) {
+    console.error("❌ getForfeitedPoolBalance failed:", error.message);
+    throw error;
+  }
+}
+
+/**
+ * Withdraw funds from forfeited pool.
+ * @param {string} toAddress - Recipient wallet address
+ * @param {string} amountWei - Amount in wei as string
+ * @param {string} purpose   - Reason label for accounting
+ * @returns {object}         - { txHash, blockNumber, toAddress, amountWei, purpose }
+ */
+async function withdrawForfeitedPoolFunds(toAddress, amountWei, purpose = "general") {
+  try {
+    const ddaContract = getContract();
+
+    const tx = await ddaContract.withdrawForfeitedPoolFunds(
+      toAddress,
+      amountWei,
+      purpose
+    );
+
+    const receipt = await tx.wait();
+
+    return {
+      txHash: tx.hash,
+      blockNumber: receipt.blockNumber,
+      toAddress,
+      amountWei,
+      amountEth: ethers.formatEther(amountWei),
+      purpose,
+    };
+  } catch (error) {
+    console.error("❌ withdrawForfeitedPoolFunds failed:", error.message);
+    throw error;
+  }
+}
+
+module.exports = {
+  lockStake,
+  settleCommitment,
+  getForfeitedPoolBalance,
+  withdrawForfeitedPoolFunds,
+};

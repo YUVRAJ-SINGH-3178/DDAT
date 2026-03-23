@@ -21,6 +21,7 @@ contract DDATracker {
     // ─── State ──────────────────────────────────────────────────────────
     uint256 public commitmentCount;
     mapping(uint256 => Commitment) public commitments;
+    uint256 public forfeitedPoolBalance;
 
     address public owner;
 
@@ -42,6 +43,19 @@ contract DDATracker {
         uint256 indexed commitmentId,
         bool success,
         uint256 stakeAmount
+    );
+
+    event ForfeitedPoolCredited(
+        uint256 indexed commitmentId,
+        uint256 amount,
+        uint256 newPoolBalance
+    );
+
+    event ForfeitedPoolWithdrawn(
+        address indexed to,
+        uint256 amount,
+        string purpose,
+        uint256 remainingPoolBalance
     );
 
     // ─── Modifiers ──────────────────────────────────────────────────────
@@ -144,8 +158,15 @@ contract DDATracker {
             // Return stake to the user
             (bool sent, ) = payable(c.user).call{value: c.stakeAmount}("");
             require(sent, "DDATracker: failed to send stake back");
+        } else {
+            // Track forfeited stake in a dedicated pool for later usage.
+            forfeitedPoolBalance += c.stakeAmount;
+            emit ForfeitedPoolCredited(
+                _commitmentId,
+                c.stakeAmount,
+                forfeitedPoolBalance
+            );
         }
-        // If !_success, the stake stays in the contract (forfeited)
 
         emit CommitmentVerified(_commitmentId, _success, c.stakeAmount);
     }
@@ -199,12 +220,52 @@ contract DDATracker {
         address payable _to,
         uint256 _amount
     ) external onlyOwner {
+        _withdrawForfeitedPoolFunds(_to, _amount, "general");
+    }
+
+    /**
+     * @notice Withdraw funds from the forfeited pool with a usage label.
+     *         Examples: rewards, ops, grants, personal.
+     * @param _to      Address to send the funds to.
+     * @param _amount  Amount to withdraw (in wei).
+     * @param _purpose Free-form reason label for this transfer.
+     */
+    function withdrawForfeitedPoolFunds(
+        address payable _to,
+        uint256 _amount,
+        string calldata _purpose
+    ) external onlyOwner {
+        _withdrawForfeitedPoolFunds(_to, _amount, _purpose);
+    }
+
+    function _withdrawForfeitedPoolFunds(
+        address payable _to,
+        uint256 _amount,
+        string memory _purpose
+    ) internal {
+        require(_to != address(0), "DDATracker: invalid recipient");
         require(
-            address(this).balance >= _amount,
-            "DDATracker: insufficient balance"
+            forfeitedPoolBalance >= _amount,
+            "DDATracker: insufficient forfeited pool balance"
         );
+
+        forfeitedPoolBalance -= _amount;
         (bool sent, ) = _to.call{value: _amount}("");
         require(sent, "DDATracker: withdrawal failed");
+
+        emit ForfeitedPoolWithdrawn(
+            _to,
+            _amount,
+            _purpose,
+            forfeitedPoolBalance
+        );
+    }
+
+    /**
+     * @notice Check current forfeited pool balance.
+     */
+    function getForfeitedPoolBalance() external view returns (uint256) {
+        return forfeitedPoolBalance;
     }
 
     /**

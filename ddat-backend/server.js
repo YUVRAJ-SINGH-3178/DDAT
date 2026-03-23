@@ -3,14 +3,43 @@ const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
 const morgan = require("morgan");
+const Sentry = require("@sentry/node");
 const { rateLimit } = require("express-rate-limit");
 const connectDB = require("./config/db");
+
+const sentryDsn = process.env.SENTRY_DSN;
+const sentryEnabled = Boolean(sentryDsn);
+const enforceHttps =
+  process.env.ENFORCE_HTTPS === "true" || process.env.NODE_ENV === "production";
+
+Sentry.init({
+  dsn: sentryDsn,
+  enabled: sentryEnabled,
+  environment: process.env.NODE_ENV || "development",
+  tracesSampleRate: Number(process.env.SENTRY_TRACES_SAMPLE_RATE || 0),
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("Unhandled promise rejection:", reason);
+  if (sentryEnabled) {
+    Sentry.captureException(reason instanceof Error ? reason : new Error(String(reason)));
+  }
+});
+
+process.on("uncaughtException", (error) => {
+  console.error("Uncaught exception:", error);
+  if (sentryEnabled) {
+    Sentry.captureException(error);
+  }
+});
 
 // ─── Import routes ──────────────────────────────────────────────────────────
 const commitmentRoutes = require("./routes/commitment");
 const proofRoutes = require("./routes/proof");
 const voteRoutes = require("./routes/vote");
 const userRoutes = require("./routes/user");
+const adminRoutes = require("./routes/admin");
+const taskRoutes = require("./routes/task");
 
 // ─── Initialize app ─────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
@@ -21,6 +50,11 @@ const globalLimiter = rateLimit({
   limit: 100,                  // 100 requests per window per IP
   standardHeaders: "draft-7",
   legacyHeaders: false,
+  skip: (req) => {
+    if (req.method !== "GET") return false;
+    const path = req.path || "";
+    return path === "/api/health" || path === "/api/tasks/labs/list";
+  },
   message: { success: false, error: "Too many requests. Try again later." },
 });
 
@@ -42,6 +76,9 @@ const voteLimiter = rateLimit({
 
 function createApp() {
   const app = express();
+  if (enforceHttps) {
+    app.set("trust proxy", 1);
+  }
 
   // ─── Middleware ────────────────────────────────────────────────────────────
   const corsOrigins = (process.env.CORS_ORIGINS || "")
@@ -60,6 +97,31 @@ function createApp() {
     )
   );
   app.use(helmet());
+
+  app.use((req, res, next) => {
+    if (!enforceHttps) {
+      return next();
+    }
+
+    const forwardedProto = req.header("x-forwarded-proto") || "";
+    const isSecure = req.secure || forwardedProto.split(",")[0].trim() === "https";
+    if (isSecure) {
+      return next();
+    }
+
+    if (req.method === "GET" || req.method === "HEAD") {
+      const host = req.header("host");
+      if (host) {
+        return res.redirect(308, `https://${host}${req.originalUrl}`);
+      }
+    }
+
+    return res.status(426).json({
+      success: false,
+      error: "HTTPS is required for this API",
+    });
+  });
+
   app.use(globalLimiter);
   app.use(express.json({ limit: "5mb" }));
   app.use(express.urlencoded({ limit: "5mb", extended: true }));
@@ -72,6 +134,8 @@ function createApp() {
   app.use("/api/proofs", proofRoutes);                          // GET  /api/proofs/feed
   app.use("/api/vote", voteLimiter, voteRoutes);                // POST /api/vote/:proofId
   app.use("/api/user", userRoutes);                             // GET/DELETE /api/user/:wallet
+  app.use("/api/admin", writeLimiter, adminRoutes);             // GET/POST admin pool operations
+  app.use("/api/tasks", taskRoutes);                            // Enterprise task workflow
 
   // ─── Health check ─────────────────────────────────────────────────────────
   app.get("/api/health", (req, res) => {
@@ -90,9 +154,16 @@ function createApp() {
     });
   });
 
+  if (sentryEnabled) {
+    Sentry.setupExpressErrorHandler(app);
+  }
+
   // ─── Global error handler ─────────────────────────────────────────────────
   app.use((err, req, res, next) => {
     console.error("Unhandled error:", err);
+    if (sentryEnabled) {
+      Sentry.captureException(err);
+    }
     res.status(500).json({
       success: false,
       error: "Internal server error",

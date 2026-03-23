@@ -1,20 +1,22 @@
 import { Link, useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
 
-const REQUIRED_CHAIN_ID = "0xaa36a7"; // Sepolia
 const WALLET_DISCONNECTED_KEY = "walletDisconnected";
 const WALLET_AUTO_CONNECT_BLOCKED_KEY = "walletAutoConnectBlocked";
 
-const LINKS = [
-  { to: "/", label: "Portfolio" },
-  { to: "/feed", label: "Consensus" },
-  { to: "/create", label: "Execute" },
-  { to: "/submit", label: "Evidence" },
-];
-
-export default function AppLayout({ children, wallet, setWallet }) {
+export default function AppLayout({ children, wallet, setWallet, profile }) {
   const { pathname } = useLocation();
   const [notice, setNotice] = useState(null);
+
+  const isExecutive = profile && profile.role?.toLowerCase() === "executive";
+
+  const links = [
+    { to: "/", label: "Workspace" },
+    { to: "/create", label: "Create Task" },
+    { to: "/submit", label: "Submit Work" },
+    { to: "/feed", label: "Daily Votes" },
+    ...(isExecutive ? [{ to: "/admin/role-requests", label: "Role Requests" }] : []),
+  ];
 
   const showNotice = (message, type = "error") => {
     setNotice({ message, type });
@@ -33,15 +35,9 @@ export default function AppLayout({ children, wallet, setWallet }) {
       }
 
       try {
-        const [accs, chainId] = await Promise.all([
+        const [accs] = await Promise.all([
           window.ethereum.request({ method: "eth_accounts" }),
-          window.ethereum.request({ method: "eth_chainId" }),
         ]);
-
-        if (chainId !== REQUIRED_CHAIN_ID) {
-          setWallet(null);
-          return;
-        }
 
         if (accs.length > 0) {
           setWallet(accs[0]);
@@ -68,12 +64,7 @@ export default function AppLayout({ children, wallet, setWallet }) {
       setWallet(accounts[0]);
     };
 
-    const handleChainChanged = (chainId) => {
-      if (chainId !== REQUIRED_CHAIN_ID) {
-        setNotice({ message: "Please switch MetaMask to Sepolia.", type: "error" });
-        setWallet(null);
-        return;
-      }
+    const handleChainChanged = () => {
       syncWalletState();
     };
 
@@ -108,12 +99,6 @@ export default function AppLayout({ children, wallet, setWallet }) {
     }
 
     try {
-      const chainId = await window.ethereum.request({ method: "eth_chainId" });
-      if (chainId !== REQUIRED_CHAIN_ID) {
-        showNotice("Please switch MetaMask to Sepolia before connecting.");
-        return;
-      }
-
       const accs = await window.ethereum.request({ method: "eth_requestAccounts" });
       localStorage.removeItem(WALLET_DISCONNECTED_KEY);
       localStorage.removeItem(WALLET_AUTO_CONNECT_BLOCKED_KEY);
@@ -142,12 +127,12 @@ export default function AppLayout({ children, wallet, setWallet }) {
               <path d="M13 2L3 14H12L11 22L21 10H12L13 2Z" stroke="var(--color-yellow)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </div>
-          <span className="font-heading text-xl font-extrabold tracking-tight text-black hidden sm:block">DDAT</span>
+          <span className="font-heading text-xl font-extrabold tracking-tight text-black hidden sm:block">SINGULARITY TASK GRID</span>
         </Link>
 
         {/* Center: Links */}
         <div className="hidden md:flex items-center gap-8">
-          {LINKS.map(link => (
+          {links.map(link => (
             <Link
               key={link.to}
               to={link.to}
@@ -240,7 +225,7 @@ export default function AppLayout({ children, wallet, setWallet }) {
 
       {/* ─── MOBILE NAV (Neo-Brutalist Bottom Bar) ───────────────────── */}
       <nav className="fixed bottom-0 left-0 w-full h-16 bg-[var(--color-yellow)] border-t-2 border-black z-50 md:hidden flex items-center justify-around px-2" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
-        {LINKS.map(link => (
+        {links.map(link => (
           <Link
             key={link.to}
             to={link.to}

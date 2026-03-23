@@ -5,6 +5,130 @@ const User = require("../models/User");
 
 const router = express.Router();
 
+function normalizeRole(inputRole) {
+  const value = String(inputRole || "").trim().toLowerCase();
+
+  if (value === "enterprise_admin") return "executive";
+  if (value === "employee") return "member";
+  if (["member", "affiliate", "executive"].includes(value)) return value;
+
+  return "member";
+}
+
+/**
+ * GET /api/user/:wallet/profile
+ * Fetch or bootstrap a user profile
+ */
+router.get("/:wallet/profile", async (req, res) => {
+  try {
+    const { wallet } = req.params;
+
+    if (!wallet || typeof wallet !== "string" || wallet.length < 5) {
+      return res.status(400).json({ success: false, message: "Invalid wallet address" });
+    }
+
+    const normalizedWallet = wallet.toLowerCase().trim();
+    let user = await User.findOne({ walletAddress: normalizedWallet });
+
+    if (!user) {
+      user = await User.create({ walletAddress: normalizedWallet });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        walletAddress: user.walletAddress,
+        displayName: user.displayName || "",
+        email: user.email || "",
+        role: normalizeRole(user.role),
+        organization: user.organization || "",
+        labKey: user.labKey || "",
+        requestedRole: user.requestedRole,
+        requestedRoleAt: user.requestedRoleAt,
+      },
+    });
+  } catch (err) {
+    console.error("Error fetching profile:", err);
+    res.status(500).json({ success: false, message: "Failed to fetch profile" });
+  }
+});
+
+/**
+ * POST /api/user/:wallet/profile
+ * Create or update a user profile
+ */
+router.post("/:wallet/profile", async (req, res) => {
+  try {
+    const { wallet } = req.params;
+    const { displayName = "", email = "", role = "member", organization = "", labKey = "" } = req.body || {};
+
+    if (!wallet || typeof wallet !== "string" || wallet.length < 5) {
+      return res.status(400).json({ success: false, message: "Invalid wallet address" });
+    }
+
+    // Validate email domain
+    if (email && !String(email).toLowerCase().endsWith("@srmap.edu.in")) {
+      return res.status(400).json({ success: false, message: "Email must be from @srmap.edu.in domain" });
+    }
+
+    const normalizedWallet = wallet.toLowerCase().trim();
+    const currentUser = await User.findOne({ walletAddress: normalizedWallet });
+    
+    const currentRole = currentUser ? normalizeRole(currentUser.role) : "member";
+    const newRole = normalizeRole(role);
+    
+    // Members/Affiliates can only request role changes, not apply them directly
+    const isRoleChangeRequest = newRole !== currentRole && !["executive"].includes(currentRole);
+
+    if (!["member", "affiliate", "executive"].includes(newRole)) {
+      return res.status(400).json({ success: false, message: "Role must be member, affiliate, or executive" });
+    }
+
+    const updateData = {
+      walletAddress: normalizedWallet,
+      displayName: String(displayName || "").trim(),
+      email: String(email || "").trim().toLowerCase(),
+      organization: String(organization || "").trim(),
+      labKey: String(labKey || "").trim(),
+    };
+
+    // If role change is requested by non-executive, store as pending
+    if (isRoleChangeRequest) {
+      updateData.requestedRole = newRole;
+      updateData.requestedRoleAt = new Date();
+    } else {
+      // Executives can change their own role or approve role changes
+      updateData.role = newRole;
+      updateData.requestedRole = null;
+      updateData.requestedRoleAt = null;
+    }
+
+    const user = await User.findOneAndUpdate(
+      { walletAddress: normalizedWallet },
+      updateData,
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    );
+
+    res.json({
+      success: true,
+      message: isRoleChangeRequest ? "Role change request submitted. Awaiting executive approval." : "Profile updated.",
+      data: {
+        walletAddress: user.walletAddress,
+        displayName: user.displayName || "",
+        email: user.email || "",
+        role: normalizeRole(user.role),
+        organization: user.organization || "",
+        labKey: user.labKey || "",
+        requestedRole: user.requestedRole,
+        requestedRoleAt: user.requestedRoleAt,
+      },
+    });
+  } catch (err) {
+    console.error("Error updating profile:", err);
+    res.status(500).json({ success: false, message: "Failed to update profile" });
+  }
+});
+
 /**
  * GET /api/user/:wallet/activity
  * Fetch transaction history for a user
@@ -66,6 +190,190 @@ router.get("/:wallet/activity", async (req, res) => {
   } catch (err) {
     console.error("Error fetching activity:", err);
     res.status(500).json({ success: false, message: "Failed to fetch activity" });
+  }
+});
+
+/**
+ * GET /api/user/members/by-lab/:labKey
+ * Fetch all members in a specific lab
+ */
+router.get("/members/by-lab/:labKey", async (req, res) => {
+  try {
+    const { labKey } = req.params;
+    const { wallet, includeAll } = req.query;
+
+    if (!labKey || typeof labKey !== "string") {
+      return res.status(400).json({ success: false, message: "Invalid lab key" });
+    }
+
+    const normalizedLabKey = String(labKey).trim();
+    const normalizedLabKeyLower = normalizedLabKey.toLowerCase();
+    const membersByLab = await User.find({
+      labKey: { $regex: new RegExp(`^${normalizedLabKeyLower}$`, "i") },
+    }).sort({ displayName: 1 });
+    let members = [...membersByLab];
+
+    // Expand with organization teammates for better discoverability from executive dashboards.
+    if (wallet && typeof wallet === "string") {
+      const requester = await User.findOne({ walletAddress: wallet.toLowerCase().trim() });
+      const requesterOrganization = String(requester?.organization || "").trim();
+      const requesterRole = normalizeRole(requester?.role);
+
+      // Executives/Affiliates can assign broadly, so include all known user profiles.
+      if (["executive", "affiliate"].includes(requesterRole) || String(includeAll || "") === "1") {
+        const allUsers = await User.find({ walletAddress: { $exists: true, $ne: "" } }).sort({ displayName: 1 });
+        const byWallet = new Map();
+        [...membersByLab, ...allUsers].forEach((member) => {
+          byWallet.set(member.walletAddress, member);
+        });
+        members = Array.from(byWallet.values()).sort((a, b) => {
+          const left = String(a.displayName || a.walletAddress).toLowerCase();
+          const right = String(b.displayName || b.walletAddress).toLowerCase();
+          return left.localeCompare(right);
+        });
+      }
+
+      if (requesterOrganization) {
+        const membersByOrganization = await User.find({
+          organization: { $regex: new RegExp(`^${requesterOrganization}$`, "i") },
+        }).sort({ displayName: 1 });
+        const byWallet = new Map();
+
+        [...members, ...membersByOrganization].forEach((member) => {
+          byWallet.set(member.walletAddress, member);
+        });
+
+        members = Array.from(byWallet.values()).sort((a, b) => {
+          const left = String(a.displayName || a.walletAddress).toLowerCase();
+          const right = String(b.displayName || b.walletAddress).toLowerCase();
+          return left.localeCompare(right);
+        });
+      }
+    }
+
+    // Last-resort fallback: return all profiles that have at least a wallet and display hint.
+    if (members.length === 0) {
+      members = await User.find({ walletAddress: { $exists: true, $ne: "" } }).sort({ displayName: 1 });
+    }
+
+    const data = members.map(user => ({
+      walletAddress: user.walletAddress,
+      displayName: user.displayName || user.walletAddress,
+      email: user.email || "",
+      role: normalizeRole(user.role),
+      organization: user.organization || "",
+      labKey: user.labKey,
+    }));
+
+    res.json({ success: true, data });
+  } catch (err) {
+    console.error("Error fetching lab members:", err);
+    res.status(500).json({ success: false, message: "Failed to fetch lab members" });
+  }
+});
+
+/**
+ * GET /api/user/role-requests/pending
+ * Get all pending role change requests (for executives)
+ */
+router.get("/role-requests/pending", async (req, res) => {
+  try {
+    const { executiveWallet } = req.query;
+    if (!executiveWallet || typeof executiveWallet !== "string") {
+      return res.status(400).json({ success: false, message: "executiveWallet is required" });
+    }
+
+    const executive = await User.findOne({ walletAddress: executiveWallet.toLowerCase().trim() });
+    if (!executive || normalizeRole(executive.role) !== "executive") {
+      return res.status(403).json({ success: false, message: "Only executives can view role requests" });
+    }
+
+    const executiveLabKey = String(executive.labKey || "").trim();
+    if (!executiveLabKey) {
+      return res.json({ success: true, data: [] });
+    }
+
+    const requests = await User.find({
+      requestedRole: { $ne: null },
+      labKey: executiveLabKey,
+    }).sort({ requestedRoleAt: -1 });
+
+    const data = requests.map(user => ({
+      walletAddress: user.walletAddress,
+      displayName: user.displayName || user.walletAddress,
+      email: user.email || "",
+      currentRole: normalizeRole(user.role),
+      requestedRole: user.requestedRole,
+      requestedRoleAt: user.requestedRoleAt,
+      organization: user.organization || "",
+      labKey: user.labKey || "",
+    }));
+
+    res.json({ success: true, data });
+  } catch (err) {
+    console.error("Error fetching role requests:", err);
+    res.status(500).json({ success: false, message: "Failed to fetch role requests" });
+  }
+});
+
+/**
+ * POST /api/user/:wallet/approve-role
+ * Executive approves a pending role change request
+ */
+router.post("/:wallet/approve-role", async (req, res) => {
+  try {
+    const { wallet } = req.params;
+    const { executiveWallet, approve = true } = req.body || {};
+
+    if (!wallet || !executiveWallet) {
+      return res.status(400).json({ success: false, message: "wallet and executiveWallet required" });
+    }
+
+    // Verify executive role
+    const executive = await User.findOne({ walletAddress: executiveWallet.toLowerCase().trim() });
+    if (!executive || normalizeRole(executive.role) !== "executive") {
+      return res.status(403).json({ success: false, message: "Only executives can approve role changes" });
+    }
+
+    const normalizedWallet = wallet.toLowerCase().trim();
+    const user = await User.findOne({ walletAddress: normalizedWallet });
+
+    if (!user || !user.requestedRole) {
+      return res.status(404).json({ success: false, message: "No pending role request found" });
+    }
+
+    const executiveLabKey = String(executive.labKey || "").trim().toLowerCase();
+    const targetLabKey = String(user.labKey || "").trim().toLowerCase();
+    if (!executiveLabKey || !targetLabKey || executiveLabKey !== targetLabKey) {
+      return res.status(403).json({ success: false, message: "You can only manage role requests from your own lab" });
+    }
+
+    if (approve) {
+      user.role = user.requestedRole;
+      user.requestedRole = null;
+      user.requestedRoleAt = null;
+    } else {
+      user.requestedRole = null;
+      user.requestedRoleAt = null;
+    }
+
+    await user.save();
+
+    res.json({
+      success: true,
+      message: approve ? "Role change approved" : "Role change request denied",
+      data: {
+        walletAddress: user.walletAddress,
+        displayName: user.displayName || "",
+        email: user.email || "",
+        role: normalizeRole(user.role),
+        organization: user.organization || "",
+        labKey: user.labKey || "",
+      },
+    });
+  } catch (err) {
+    console.error("Error approving role change:", err);
+    res.status(500).json({ success: false, message: "Failed to approve role change" });
   }
 });
 
