@@ -121,12 +121,11 @@ export default function AppLayout({ children, wallet, setWallet, profile }) {
       <header className="fixed top-0 left-0 w-full h-20 z-50 bg-[var(--color-yellow)] border-b-2 border-black flex items-center justify-between px-3 sm:px-6">
         {/* Left: Logo */}
         <Link to="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-          <div className="w-10 h-10 bg-black flex items-center justify-center">
-            {/* Using a lightning bolt icon as requested */}
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="var(--color-yellow)" xmlns="http://www.w3.org/2000/svg">
-              <path d="M13 2L3 14H12L11 22L21 10H12L13 2Z" stroke="var(--color-yellow)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </div>
+          <img
+            src="/singularity_new_logo.png"
+            alt="Singularity Task Grid logo"
+            className="w-10 h-10 object-contain"
+          />
           <span className="font-heading text-xl font-extrabold tracking-tight text-black hidden sm:block">SINGULARITY TASK GRID</span>
         </Link>
 
