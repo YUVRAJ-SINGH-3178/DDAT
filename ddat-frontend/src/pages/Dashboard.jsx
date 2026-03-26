@@ -54,12 +54,7 @@ export default function Dashboard({ wallet }) {
           setProfileLoaded(true);
         }
 
-        const organization = profilePayload?.data?.organization;
-        const query = organization
-          ? `?wallet=${wallet}&organization=${encodeURIComponent(organization)}`
-          : `?wallet=${wallet}`;
-
-        const taskPayload = await apiRequest(`/tasks${query}`);
+        const taskPayload = await apiRequest(`/tasks?wallet=${wallet}`);
 
         if (!mounted) return;
 

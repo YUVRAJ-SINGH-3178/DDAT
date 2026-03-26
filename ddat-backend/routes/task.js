@@ -3,6 +3,10 @@ const mongoose = require("mongoose");
 const Task = require("../models/Task");
 const User = require("../models/User");
 const { LABS } = require("../config/labs");
+const {
+  SYSTEM_DECISION_WALLET,
+  rejectExpiredOpenTasks,
+} = require("../services/taskDeadlineService");
 
 const router = express.Router();
 
@@ -24,6 +28,16 @@ function normalizeRole(inputRole) {
 function isValidDate(value) {
   const date = new Date(value);
   return !Number.isNaN(date.getTime());
+}
+
+function getTaskDeadline(task) {
+  return task.endDate || task.workDate || null;
+}
+
+function hasTaskDeadlinePassed(task, now = new Date()) {
+  const deadline = getTaskDeadline(task);
+  if (!deadline) return false;
+  return deadline.getTime() < now.getTime();
 }
 
 function getRequiredVotes(totalEligible) {
@@ -127,6 +141,7 @@ router.get("/", async (req, res) => {
       ];
     }
 
+    await rejectExpiredOpenTasks();
     let tasks = await Task.find(query).sort({ createdAt: -1 });
 
     if (String(autoFinalize) !== "0") {
@@ -262,6 +277,22 @@ router.post("/:taskId/submit", async (req, res) => {
 
     if (!task) {
       return res.status(404).json({ success: false, error: "Task not found" });
+    }
+
+    const now = new Date();
+    const deadlinePassed = hasTaskDeadlinePassed(task, now);
+    if (task.status === "open" && deadlinePassed) {
+      task.status = "rejected";
+      task.decidedByWallet = SYSTEM_DECISION_WALLET;
+      task.resolvedAt = now;
+      await task.save();
+    }
+
+    if (hasTaskDeadlinePassed(task, now)) {
+      return res.status(400).json({
+        success: false,
+        error: "Task deadline has passed and can no longer be submitted",
+      });
     }
 
     const isAssignee = task.assignedToWallet && task.assignedToWallet === normalizedWallet;

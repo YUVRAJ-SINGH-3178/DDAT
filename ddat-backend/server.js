@@ -7,6 +7,7 @@ const Sentry = require("@sentry/node");
 const { rateLimit } = require("express-rate-limit");
 const mongoose = require("mongoose");
 const connectDB = require("./config/db");
+const { startTaskDeadlineWatcher } = require("./services/taskDeadlineService");
 
 const sentryDsn = process.env.SENTRY_DSN;
 const sentryEnabled = Boolean(sentryDsn);
@@ -234,6 +235,7 @@ const startServer = async () => {
   // Start DB connection after the port is bound so hosting platforms
   // can complete startup health checks while DB warms up.
   await connectDbWithRetryLoop();
+  startTaskDeadlineWatcher();
 };
 
 if (require.main === module) {
