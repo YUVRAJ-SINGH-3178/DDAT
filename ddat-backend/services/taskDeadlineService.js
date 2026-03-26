@@ -1,29 +1,35 @@
 const Task = require("../models/Task");
 
-const DEFAULT_DEADLINE_SWEEP_MS = Number(process.env.TASK_DEADLINE_SWEEP_MS || 60_000);
+const DEFAULT_DEADLINE_SWEEP_MS = Number(
+  process.env.TASK_DEADLINE_SWEEP_MS || 60_000,
+);
 const SYSTEM_DECISION_WALLET = "system_deadline";
+const TASK_AUTO_REJECT_HOURS = Math.max(
+  1,
+  parseInt(process.env.TASK_AUTO_REJECT_HOURS, 10) || 24,
+);
+
+function getAutoRejectCutoff(now = new Date()) {
+  return new Date(now.getTime() - TASK_AUTO_REJECT_HOURS * 60 * 60 * 1000);
+}
 
 function buildExpiredOpenTasksQuery(now = new Date()) {
+  const cutoff = getAutoRejectCutoff(now);
+
   return {
     status: "open",
-    $or: [
-      { endDate: { $ne: null, $lt: now } },
-      { endDate: null, workDate: { $lt: now } },
-    ],
+    createdAt: { $lt: cutoff },
   };
 }
 
 async function rejectExpiredOpenTasks(now = new Date()) {
-  const result = await Task.updateMany(
-    buildExpiredOpenTasksQuery(now),
-    {
-      $set: {
-        status: "rejected",
-        decidedByWallet: SYSTEM_DECISION_WALLET,
-        resolvedAt: now,
-      },
-    }
-  );
+  const result = await Task.updateMany(buildExpiredOpenTasksQuery(now), {
+    $set: {
+      status: "rejected",
+      decidedByWallet: SYSTEM_DECISION_WALLET,
+      resolvedAt: now,
+    },
+  });
 
   return result.modifiedCount || 0;
 }
@@ -38,7 +44,9 @@ function startTaskDeadlineWatcher(options = {}) {
     try {
       const rejectedCount = await rejectExpiredOpenTasks();
       if (rejectedCount > 0) {
-        console.log(`[task-deadline] Auto-rejected ${rejectedCount} overdue task(s)`);
+        console.log(
+          `[task-deadline] Auto-rejected ${rejectedCount} overdue task(s)`,
+        );
       }
     } catch (error) {
       console.error("[task-deadline] Sweep failed:", error.message);
